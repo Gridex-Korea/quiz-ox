@@ -29,7 +29,8 @@ function randomAvatar(): AvatarSpec {
 }
 
 export function registerRoutes(app: FastifyInstance, game: GameService, deps: RoutesDeps): void {
-  const joinLimiter = new RateLimiter(30, 60_000);
+  // 이동통신 NAT 뒤의 참가자들은 IP를 공유할 수 있으므로 느슨하게(분당 200회). 남용 방지용일 뿐이다.
+  const joinLimiter = new RateLimiter(200, 60_000);
   const loginLimiter = new RateLimiter(5, 10 * 60_000);
 
   app.addContentTypeParser(['text/csv', 'text/plain'], { parseAs: 'string' }, (_req, body, done) => done(null, body));
