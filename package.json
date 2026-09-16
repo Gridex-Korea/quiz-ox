@@ -1,0 +1,36 @@
+{
+  "name": "ox-quiz-live",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "행사용 OX 퀴즈 라이브: 참가자 폰 + 대형 스크린 + 사회자 콘솔",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w web && npm run build -w server",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w web",
+    "lint": "eslint .",
+    "test": "npm run test -w server",
+    "start": "node server/dist/index.js",
+    "simulate": "node --import tsx tools/simulate.ts"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.3",
+    "concurrently": "^10.0.5",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}
