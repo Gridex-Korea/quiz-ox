@@ -57,8 +57,8 @@ class Bot {
     baseSkill: number,
     private answers: () => Map<number, 'O' | 'X'>,
     private base: string,
-    /** 이 orderNo까지만 답한다(-1이면 제한 없음) */
-    private lastIndex: number,
+    /** 지금 라운드에 답해도 되는가(일반 문제 N번까지 + 그 전에 열린 부활전). 문제 번호가 아니라 진행 순서로 판단 */
+    private gate: () => boolean,
   ) {
     this.skill = Math.min(0.95, Math.max(0.35, baseSkill + rand(-0.2, 0.2)));
   }
@@ -114,7 +114,7 @@ class Bot {
   private onState(v: PlayerView) {
     if (v.status !== 'ANSWERING' || !v.canAnswer || !v.question || !v.deadline) return;
     const idx = v.question.index;
-    if (this.lastIndex >= 0 && idx > this.lastIndex) return;
+    if (!this.gate()) return;
     if (this.answered.has(idx)) return;
     this.answered.add(idx);
     const remaining = v.deadline - Date.now();
@@ -159,6 +159,11 @@ async function main() {
   let lastStatus = '';
   let leaving = false;
   const bots: Bot[] = [];
+  // 몇 번째 일반 문제인지 진행 순서로 센다(부활전 문제는 번호가 뒤쪽이라 번호로 판단하면 안 됨)
+  const seenNormal = new Set<number>();
+  const normalRounds = () => seenNormal.size;
+  /** 아직 퇴장 전이고, 일반 문제 N번 이내(또는 그 사이 부활전)면 답한다 */
+  const gate = () => !leaving && (lastIndex < 0 || normalRounds() <= lastIndex + 1);
 
   const leaveAll = async (reason: string) => {
     if (leaving) return;
@@ -185,17 +190,22 @@ async function main() {
     }) => {
       answers.clear();
       for (const q of v.questions) answers.set(q.orderNo, q.answer);
+      const inRound = ['QUESTION_SHOWN', 'ANSWERING', 'TIME_UP', 'REVEALED'].includes(v.status);
+      if (inRound && v.mode === 'NORMAL' && v.currentIndex >= 0) seenNormal.add(v.currentIndex);
       if (v.status !== lastStatus) {
         lastStatus = v.status;
         const alive = v.players.filter((p) => p.status === 'ACTIVE').length;
         const waiting = v.players.filter((p) => p.status === 'WAITING').length;
         const out = v.players.filter((p) => p.status === 'ELIMINATED').length;
-        log(`방 상태 ${v.status} · 생존 ${alive} · 대기실 ${waiting} · 탈락 ${out}`);
-        if (v.status === 'LOBBY') leaving = false;
+        log(`방 상태 ${v.status}${inRound ? ` (${v.mode === 'REVIVAL' ? '부활전' : `일반 ${normalRounds()}번째`})` : ''} · 생존 ${alive} · 대기실 ${waiting} · 탈락 ${out}`);
+        if (v.status === 'LOBBY') {
+          leaving = false;
+          seenNormal.clear();
+        }
         if (v.status === 'ENDED') log('게임 종료. 게임 초기화를 하면 아바타들이 다시 입장합니다.');
       }
-      if (lastIndex >= 0 && v.status === 'REVEALED' && v.mode === 'NORMAL' && v.currentIndex >= lastIndex && !leaving) {
-        void leaveAll(`${lastIndex + 1}번 문제 정답 공개`);
+      if (lastIndex >= 0 && v.status === 'REVEALED' && v.mode === 'NORMAL' && normalRounds() >= lastIndex + 1 && !leaving) {
+        void leaveAll(`일반 ${lastIndex + 1}번째 문제 정답 공개`);
       }
     },
   );
@@ -206,13 +216,13 @@ async function main() {
 
   const picked = NAMES.slice(0, Math.min(args.count, NAMES.length)); // 같은 순서라 다시 켜도 같은 사람이 복귀
   for (let i = 0; i < picked.length; i++) {
-    bots.push(new Bot(picked[i]!, `0108${String(1000000 + i).padStart(7, '0')}`, args.skill, () => answers, args.url, lastIndex));
+    bots.push(new Bot(picked[i]!, `0108${String(1000000 + i).padStart(7, '0')}`, args.skill, () => answers, args.url, gate));
   }
   for (const b of bots) {
     await b.join();
     await sleep(rand(700, 2200)); // 한 명씩 들어오는 느낌
   }
-  log(`아바타 ${bots.length}명 준비 완료${lastIndex >= 0 ? ` (${lastIndex + 1}번 문제까지 함께 뛰고 퇴장)` : ''}. 콘솔에서 입장 마감 → 문제 공개 → 타이머 시작을 눌러 주세요.`);
+  log(`아바타 ${bots.length}명 준비 완료${lastIndex >= 0 ? ` (일반 문제 ${lastIndex + 1}번째까지 함께 뛰고 퇴장, 그 사이 부활전에도 참여)` : ''}. 콘솔에서 입장 마감 → 문제 공개 → 타이머 시작을 눌러 주세요.`);
 
   setTimeout(() => {
     log(`${args.minutes}분이 지나 봇을 종료합니다.`);
