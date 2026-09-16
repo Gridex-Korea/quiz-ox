@@ -1,8 +1,8 @@
 문제,정답,종류,제한시간,이미지,해설
 지구는 태양 주위를 1년에 한 번 돈다,O,,15,,공전 주기는 약 365일
 물은 섭씨 90도에서 끓는다,X,,15,,1기압에서는 100도
-이 사람은 아인슈타인이다,O,,15,https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg,1947년 사진 (퍼블릭 도메인). 콘솔에서 사진을 직접 올리면 인터넷이 끊겨도 나옵니다
-이 사람은 AC 전력을 개발한 사람이다,O,,15,https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/Tesla_circa_1890.jpeg/480px-Tesla_circa_1890.jpeg,니콜라 테슬라 (1890년경 사진)
+이 사람은 아인슈타인이다,O,,15,https://commons.wikimedia.org/wiki/Special:FilePath/Albert_Einstein_Head.jpg?width=480,1947년 사진(퍼블릭 도메인). 행사에서는 콘솔에서 사진을 직접 올리는 쪽을 권장
+이 사람은 AC 전력을 개발한 사람이다,O,,15,https://commons.wikimedia.org/wiki/Special:FilePath/Tesla_circa_1890.jpeg?width=480,니콜라 테슬라(1890년경 사진)
 문어의 심장은 하나다,X,,15,,문어의 심장은 셋
 소리는 진공에서도 전달된다,X,,15,,매질이 있어야 전달
 올림픽은 4년마다 열린다,O,,15,,
