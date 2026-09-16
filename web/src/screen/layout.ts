@@ -14,7 +14,8 @@ export interface Rect {
 }
 
 export const ZONES: Record<Exclude<ZoneKey, 'hidden'>, Rect> = {
-  lobby: { x: 60, y: 200, w: 1800, h: 640 },
+  // 로비·종료 화면: 상단 QR 카드/우승 자막과 겹치지 않게 아래쪽 띠에서 배회
+  lobby: { x: 60, y: 560, w: 1800, h: 300 },
   O: { x: 40, y: 190, w: 640, h: 660 },
   center: { x: 700, y: 190, w: 520, h: 660 },
   X: { x: 1240, y: 190, w: 640, h: 660 },
