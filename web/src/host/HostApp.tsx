@@ -6,6 +6,7 @@ import {
   countByStatus,
   formatPhone,
   maskPhone,
+  type ChatMessage,
   type Choice,
   type PublicPlayer,
   type Question,
@@ -17,6 +18,7 @@ import QRCode from 'qrcode';
 import { api, ApiError } from '../shared/api';
 import { Avatar } from '../shared/Avatar';
 import { resizeImage } from '../shared/image';
+import { useChat } from '../shared/useChat';
 import { loadJson, removeKey, saveJson } from '../shared/storage';
 import { useCountdown, useRoom } from '../shared/socket';
 import './host.css';
@@ -116,7 +118,7 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
 
 // ---------------------------------------------------------------------------
 
-type Tab = 'players' | 'questions' | 'settings';
+type Tab = 'players' | 'questions' | 'chat' | 'settings';
 
 const STATUS_KO: Record<string, string> = {
   LOBBY: '입장 접수 중',
@@ -142,6 +144,7 @@ function Console({
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('players');
+  const chatMessages = useChat(room);
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
   const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
   const finaleIn = useCountdown(view.status === 'REVEALED' ? view.finaleAt : null, room.now);
@@ -348,14 +351,21 @@ function Console({
 
         <section className="panel side">
           <nav className="tabs">
-            {(['players', 'questions', 'settings'] as Tab[]).map((t) => (
+            {(['players', 'questions', 'chat', 'settings'] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-                {t === 'players' ? `참가자 (${view.players.length})` : t === 'questions' ? `문제 (${view.questions.length})` : '설정'}
+                {t === 'players'
+                  ? `참가자 (${view.players.length})`
+                  : t === 'questions'
+                    ? `문제 (${view.questions.length})`
+                    : t === 'chat'
+                      ? `채팅 (${chatMessages.length})${view.config.chatEnabled ? '' : ' 🔒'}`
+                      : '설정'}
               </button>
             ))}
           </nav>
           {tab === 'players' && <Players view={view} emit={emit} />}
           {tab === 'questions' && <Questions view={view} emit={emit} token={token} toast={toast} />}
+          {tab === 'chat' && <Chat view={view} emit={emit} messages={chatMessages} />}
           {tab === 'settings' && <Settings view={view} emit={emit} token={token} toast={toast} />}
         </section>
       </main>
@@ -464,6 +474,49 @@ function StatusBadge({ p }: { p: PublicPlayer }) {
 }
 
 // ---------------------------------------------------------------------------
+
+function Chat({ view, emit, messages }: { view: RoomStateForHost; emit: (e: string, p?: unknown) => void; messages: ChatMessage[] }) {
+  const enabled = view.config.chatEnabled;
+  return (
+    <div className="stack">
+      <div className="row">
+        <button className={`small ${enabled ? 'ghost' : 'primary'}`} onClick={() => emit(C2S.hostUpdateConfig, { chatEnabled: !enabled })}>
+          {enabled ? '🔒 채팅 잠그기' : '🔓 채팅 열기'}
+        </button>
+        <button className="small ghost danger-text" disabled={messages.length === 0} onClick={() => confirm('스크린과 폰의 채팅 기록을 모두 지웁니까?') && emit(C2S.hostChatClear)}>
+          전체 지우기
+        </button>
+        <span className="muted">스크린 오른쪽 패널과 아바타 말풍선에 보입니다. 부적절한 글은 ✕로 지우세요.</span>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <tbody>
+            {messages.length === 0 && (
+              <tr>
+                <td className="muted">아직 메시지가 없습니다.</td>
+              </tr>
+            )}
+            {[...messages].reverse().map((m) => (
+              <tr key={m.id}>
+                <td>
+                  <Avatar spec={m.avatar} size={24} />
+                </td>
+                <td>{m.name}</td>
+                <td style={{ whiteSpace: 'normal' }}>{m.text}</td>
+                <td className="muted">{new Date(m.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</td>
+                <td className="actions">
+                  <button className="small ghost danger-text" title="이 메시지 지우기" onClick={() => emit(C2S.hostChatDelete, { id: m.id })}>
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 const SAMPLE_QUESTIONS: QuestionInput[] = [
   { text: '지구는 태양 주위를 1년에 한 번 돈다.', answer: 'O', kind: 'NORMAL', timeLimitSec: null, imageUrl: null, explanation: '공전 주기는 약 365.25일이다.' },

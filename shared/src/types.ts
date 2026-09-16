@@ -41,7 +41,23 @@ export interface RoomConfig {
   autoStartDelaySec: number;
   /** 무대 생존자가 이 인원 이하가 되면 결승 진출자 축하 화면으로 넘어간다(0이면 끔). 부활전을 아직 안 열었고 대기실이 있으면 부활전을 먼저 제안 */
   finalistThreshold: number;
+  /** 참가자 채팅 허용 여부. 끄면 폰 입력이 잠기고 서버가 메시지를 버린다 */
+  chatEnabled: boolean;
 }
+
+/** 채팅 메시지. 저장하지 않고 서버 메모리에 최근 200개만 둔다 */
+export interface ChatMessage {
+  id: string;
+  playerId: string;
+  name: string;
+  avatar: AvatarSpec;
+  text: string;
+  at: number;
+}
+
+export const CHAT_MAX_LENGTH = 60;
+export const CHAT_MIN_INTERVAL_MS = 1500;
+export const CHAT_HISTORY_LIMIT = 200;
 
 /** 결승 진출자: 무대에서 호명할 수 있게 뒷번호 4자리를 함께 보낸다(사회자 결정, ENDED에서만) */
 export interface Finalist extends PublicPlayer {
@@ -58,6 +74,7 @@ export const DEFAULT_CONFIG: RoomConfig = {
   autoStart: true,
   autoStartDelaySec: 3,
   finalistThreshold: 3,
+  chatEnabled: true,
 };
 
 export interface Question {
@@ -213,6 +230,8 @@ export interface RoomStateForPlayer {
   finaleAt: number | null;
   /** ENDED에서 내가 결승 진출자인가 */
   isFinalist: boolean;
+  /** 채팅 입력 가능 여부(사회자 설정) */
+  chatEnabled: boolean;
   playerCount: number;
   counts: Counts | null;
   answer: Choice | null;
@@ -236,6 +255,7 @@ export interface RoomStateForScreen {
   finaleAt: number | null;
   /** ENDED이고 생존자가 결승 인원 이하일 때만 채움 */
   finalists: Finalist[] | null;
+  chatEnabled: boolean;
   counts: Counts | null;
   answer: Choice | null;
   outcomes: Outcome[] | null;

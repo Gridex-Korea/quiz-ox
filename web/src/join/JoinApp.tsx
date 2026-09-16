@@ -5,6 +5,7 @@ import { api, ApiError } from '../shared/api';
 import { Avatar, randomAvatar } from '../shared/Avatar';
 import { loadJson, queryParam, removeKey, saveJson } from '../shared/storage';
 import { useCountdown, useRoom } from '../shared/socket';
+import { ChatDrawer } from './ChatDrawer';
 import './join.css';
 
 interface Session {
@@ -333,6 +334,8 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
       {view.status === 'REVEALED' && <Result view={view} />}
 
       {view.status === 'ENDED' && <Ended view={view} myId={session.playerId} />}
+
+      <ChatDrawer room={room} view={view} />
     </div>
   );
 }

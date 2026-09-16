@@ -5,6 +5,8 @@ import {
   C2S,
   S2C,
   answerChooseSchema,
+  chatDeleteSchema,
+  chatSendSchema,
   extendTimerSchema,
   playerIdSchema,
   questionDeleteSchema,
@@ -21,6 +23,7 @@ import type { ZodType } from 'zod';
 import type { Command, Target } from '../engine/reducer';
 import { hostView, playerView, screenView } from '../engine/views';
 import type { Emitter, GameService } from '../game';
+import { ChatRoom } from '../chat';
 import type { HostTokens } from './hostTokens';
 
 type Role = 'player' | 'screen' | 'host';
@@ -42,6 +45,7 @@ export function hashToken(token: string): string {
 
 export function createGateway(io: Server, game: GameService, deps: GatewayDeps): Emitter {
   const playerSockets = new Map<string, Socket>();
+  const chat = new ChatRoom();
 
   const targetRooms = (t: Target): string[] => {
     switch (t) {
@@ -61,6 +65,10 @@ export function createGateway(io: Server, game: GameService, deps: GatewayDeps):
 
   const emitter: Emitter = {
     toTarget(target, event, payload) {
+      if (event === S2C.roomReset) {
+        chat.clear();
+        io.emit(S2C.chatCleared, {});
+      }
       const rooms = targetRooms(target);
       if (rooms.length === 0) io.emit(event, payload);
       else io.to(rooms).emit(event, payload);
@@ -132,6 +140,9 @@ export function createGateway(io: Server, game: GameService, deps: GatewayDeps):
       if (!p.success) return;
       socket.emit(S2C.timePong, { clientSent: p.data.clientSent, serverNow: game.now() });
     });
+    // 접속한 모든 화면에 최근 채팅을 준다. 채팅 UI가 늦게 마운트되어 이 이벤트를 놓칠 수 있으므로 요청도 받는다
+    socket.emit(S2C.chatHistory, { messages: chat.history() });
+    socket.on(C2S.chatSync, () => socket.emit(S2C.chatHistory, { messages: chat.history() }));
 
     if (data.role === 'player' && data.playerId) {
       const playerId = data.playerId;
@@ -151,6 +162,16 @@ export function createGateway(io: Server, game: GameService, deps: GatewayDeps):
         if (process.env['OX_DEBUG']) console.log(`[ox] answer:choose from ${playerId}`, JSON.stringify(raw), p.success ? 'valid' : 'invalid');
         if (!p.success) return;
         game.dispatch({ type: 'choose', playerId, index: p.data.index, choice: p.data.choice });
+      });
+
+      socket.on(C2S.chatSend, (raw: unknown) => {
+        const p = chatSendSchema.safeParse(raw);
+        if (!p.success) return;
+        if (!game.state.room.config.chatEnabled) return;
+        const player = game.state.players[playerId];
+        if (!player || player.status === 'ELIMINATED') return;
+        const msg = chat.post(player, p.data.text, game.now());
+        if (msg) io.emit(S2C.chatMessage, msg);
       });
 
       socket.on('disconnect', () => {
@@ -211,6 +232,16 @@ export function createGateway(io: Server, game: GameService, deps: GatewayDeps):
       handle(C2S.hostQuestionUpsert, questionInputSchema, (p) => ({ type: 'questionUpsert', question: p }));
       handle(C2S.hostQuestionDelete, questionDeleteSchema, (p) => ({ type: 'questionDelete', id: p.id }));
       handle(C2S.hostResetRoom, resetRoomSchema, (p) => ({ type: 'resetRoom', keepQuestions: p.keepQuestions }));
+
+      socket.on(C2S.hostChatDelete, (raw: unknown) => {
+        const p = chatDeleteSchema.safeParse(raw);
+        if (!p.success) return;
+        if (chat.delete(p.data.id)) io.emit(S2C.chatDeleted, { id: p.data.id });
+      });
+      socket.on(C2S.hostChatClear, () => {
+        chat.clear();
+        io.emit(S2C.chatCleared, {});
+      });
       return;
     }
   });

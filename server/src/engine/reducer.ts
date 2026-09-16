@@ -331,7 +331,7 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       const inGame = !['LOBBY', 'LOCKED'].includes(state.room.status);
       const patch = { ...cmd.patch };
       if (inGame) {
-        const allowedInGame: (keyof RoomConfig)[] = ['revivalAfterOrderNo', 'liveMovesUntilOrderNo', 'autoStart', 'autoStartDelaySec', 'finalistThreshold'];
+        const allowedInGame: (keyof RoomConfig)[] = ['revivalAfterOrderNo', 'liveMovesUntilOrderNo', 'autoStart', 'autoStartDelaySec', 'finalistThreshold', 'chatEnabled'];
         for (const key of Object.keys(patch) as (keyof RoomConfig)[]) {
           if (!allowedInGame.includes(key)) return fail(prev, 'config_locked');
         }

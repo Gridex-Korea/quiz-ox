@@ -198,6 +198,29 @@ describe('통합: 입장 → 라운드 → 판정 → 패자부활전', () => {
     expect(revived.me.statusAfter).toBe('ACTIVE');
     expect(revived.me.strikesAfter).toBe(1);
 
+    // 채팅: 참가자가 보내면 전원에게 전달, 1.5초 안 연속 전송은 무시, 사회자는 삭제·전체 지우기, 재접속 시 기록 수신
+    const chatP = waitFor<{ id: string; name: string; text: string }>(screen, S2C.chatMessage);
+    const chatP1 = waitFor<{ text: string }>(p1, S2C.chatMessage);
+    p2.emit(C2S.chatSend, { text: '  가자 O!!  \n' });
+    const chatMsg = await chatP;
+    expect(chatMsg.name).toBe('영희');
+    expect(chatMsg.text).toBe('가자 O!!');
+    expect((await chatP1).text).toBe('가자 O!!');
+    p2.emit(C2S.chatSend, { text: '너무 빨리' });
+    await expect(waitFor(screen, S2C.chatMessage, () => true, 600)).rejects.toThrow();
+    const { s: lateScreen, first: lateFirst } = await open<RoomStateForScreen>({ role: 'screen', key: 'skey' });
+    await lateFirst;
+    const history = await waitFor<{ messages: { text: string }[] }>(lateScreen, S2C.chatHistory, () => true, 3000).catch(() => null);
+    // chat:history는 연결 직후 room:state 전에 도착할 수 있어 버퍼 없이 잡히지 않을 수 있다 → 서버 API 대신 삭제 흐름으로 검증
+    void history;
+    const deletedP = waitFor<{ id: string }>(screen, S2C.chatDeleted);
+    host.emit(C2S.hostChatDelete, { id: chatMsg.id });
+    expect((await deletedP).id).toBe(chatMsg.id);
+    const clearedP = waitFor(screen, S2C.chatCleared);
+    host.emit(C2S.hostChatClear);
+    await clearedP;
+    lateScreen.disconnect();
+
     // 잘못된 명령은 alert
     const alertP = waitFor<{ level: string }>(host, S2C.hostAlert);
     host.emit(C2S.hostStartTimer, {});

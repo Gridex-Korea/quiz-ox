@@ -62,6 +62,9 @@ related: ["[[game-flow]]", "[[data-model]]", "[[ADR-0001-realtime-socketio]]"]
 | `round:cancelled` | 전체 | `{ index }` | 답변 폐기, 문제 화면으로 복귀 |
 | `game:ended` | 전체 | `{ survivors: PublicPlayer[], totalQuestions }` | 종료. 최종 결승은 앱 밖에서 진행 |
 | `game:winner` | 전체 | `{ playerId }` | 오프라인 결승 뒤 사회자가 우승자 지정. 스크린은 왕관·팡파르, 우승자 폰은 축하 화면 |
+| `chat:message` | 전체 | `ChatMessage = { id, playerId, name, avatar, text, at }` | 참가자 채팅 1건. 스크린은 보낸 사람 아바타 위 말풍선(5초)과 오른쪽 패널에, 폰은 채팅 서랍에 표시. **전화번호는 포함하지 않는다** |
+| `chat:history` | 소켓 1개 | `{ messages: ChatMessage[] }` | 접속 직후, 그리고 `chat:sync` 요청 시 최근 40건 |
+| `chat:deleted` / `chat:cleared` | 전체 | `{ id }` / `{}` | 사회자가 지운 메시지 / 전체 삭제 |
 | `host:alert` | `host` | `{ level, message }` | 생존자 0명, 대기실 0명에 패자부활전 시도, 스냅샷 복구 등 운영 경고 |
 
 ### `room:state` 내용
@@ -105,6 +108,10 @@ type RoomStateForHost = RoomStateForScreen & { questions: Question[]; currentInd
 | `host:end` | 사회자 | — | 강제 종료 |
 | `host:setWinner` | 사회자 | `{ playerId }` | `ENDED`에서만, 생존자 중 한 명 → `game:winner`. 다시 보내면 교체 |
 | `host:restore` / `host:kick` | 사회자 | `{ playerId }` | 참가자 수동 개입 |
+| `chat:send` | 참가자 | `{ text }` (200자까지 받고 서버가 60자로 자름) | 채팅 전송. `chatEnabled`가 꺼져 있거나 탈락자면 무시. 같은 사람은 1.5초에 1회. 보이지 않는 문자·연속 공백을 정리해 빈 문자열이 되면 무시 |
+| `chat:sync` | 전체 | — | 최근 채팅 기록을 다시 요청(`chat:history`로 응답). 채팅 UI가 늦게 마운트되어 접속 직후 기록을 놓쳤을 때 |
+| `host:chatDelete` | 사회자 | `{ id }` | 메시지 1건 삭제 → 전원에게 `chat:deleted` |
+| `host:chatClear` | 사회자 | — | 채팅 기록 전체 삭제 → 전원에게 `chat:cleared` |
 | `host:removePlayer` | 사회자 | `{ playerId }` | 참가자를 방에서 **완전히 삭제**(집계·명단·CSV에서 사라짐). 리허설 계정 정리, 행사용 아바타 봇 퇴장에 사용. 해당 폰에는 `player:removed` 후 연결 종료 |
 | `host:updateConfig` | 사회자 | `Partial<RoomConfig>` | `LOBBY`/`LOCKED`에서만 허용. 단 `revivalAfterOrderNo`·`liveMovesUntilOrderNo`는 게임 중에도 변경 가능 |
 | `host:questions:replace` / `host:question:upsert` / `host:question:delete` | 사회자 | 문제 목록 / 문제 1개 / `{ id }` | 문제 편집. 출제한 문제는 삭제·순서 변경 불가 |

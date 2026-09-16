@@ -62,8 +62,12 @@ export const updateConfigSchema = z
     autoStart: z.boolean(),
     autoStartDelaySec: z.number().int().min(0).max(30),
     finalistThreshold: z.number().int().min(0).max(20),
+    chatEnabled: z.boolean(),
   })
   .partial();
+
+export const chatSendSchema = z.object({ text: z.string().min(1).max(200) });
+export const chatDeleteSchema = z.object({ id: z.string().min(1).max(64) });
 
 export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 export const IMAGE_MAX_BYTES = 3 * 1024 * 1024;

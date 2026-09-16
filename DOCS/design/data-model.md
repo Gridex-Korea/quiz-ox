@@ -92,6 +92,7 @@ erDiagram
 | `pending_revival` | INTEGER | 0/1 | 생존자가 결승 인원 이하인데 부활전을 아직 안 열어 다음 단계가 부활전인 상태 → [[game-flow]] 결승 규칙 |
 | `finale_at` | INTEGER | NULL 허용 | 결승 발표(ENDED) 자동 전환 예정 시각. 재시작 시 신뢰하지 않음(예약 자체는 메모리) |
 | `config.finalistThreshold` | (config JSON) | 기본 3 | 결승 진출 인원. 0이면 규칙 끔 |
+| `config.chatEnabled` | (config JSON) | 기본 true | 참가자 채팅 허용. 채팅 내용 자체는 저장하지 않고 서버 메모리에 최근 200건만 둔다 |
 | `winner_player_id` | TEXT | NULL 허용, FK players | 오프라인 결승 뒤 사회자가 지정한 우승자. `ENDED`에서만 채움 |
 | `created_at`, `updated_at` | TEXT | ISO 8601 | |
 

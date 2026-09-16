@@ -31,6 +31,9 @@ function parseArgs(): Args {
 }
 
 const NAMES = ['민준', '서연', '도윤', '하은', '지호', '수아', '예준', '지우', '시우', '하윤', '유준', '서윤', '주원', '민서', '건우', '지민', '현우', '아린', '우진', '채원'];
+const CHEERS = ['가자!!', 'O 아니야?', 'X 확실함', '헐 어렵다', '이건 알지 ㅋㅋ', '떨린다…', '나 살았다!', 'ㅠㅠ 아깝다', '부활하자!!', '다들 화이팅', '🔥🔥🔥', '👏👏👏', '5초 남았어', '오늘 컨디션 좋다', '이 문제 낚시 아님?', '사회자님 힌트요'];
+/** 마감 몇 ms 전에 최종 선택으로 옮겨가는가 */
+const FINAL_WINDOW_MS = 5000;
 const t0 = Date.now();
 const log = (m: string) => console.log(`[+${((Date.now() - t0) / 1000).toFixed(0).padStart(3)}s] ${m}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -123,39 +126,60 @@ class Bot {
     });
   }
 
+  private lastChatStatus = '';
+
+  /** 상태가 바뀔 때 가끔 응원 채팅을 보낸다(문제 공개·정답 공개 뒤 30%) */
+  private maybeChat(v: PlayerView) {
+    if (v.status === this.lastChatStatus) return;
+    this.lastChatStatus = v.status;
+    if (!['QUESTION_SHOWN', 'REVEALED', 'LOCKED'].includes(v.status) || Math.random() > 0.3) return;
+    setTimeout(() => {
+      if (this.gone || !this.socket?.connected) return;
+      this.socket.emit('chat:send', { text: CHEERS[Math.floor(Math.random() * CHEERS.length)] });
+    }, rand(500, 5000));
+  }
+
   private onState(v: PlayerView) {
+    this.maybeChat(v);
     if (v.status !== 'ANSWERING' || !v.canAnswer || !v.question || !v.deadline) return;
     const idx = v.question.index;
     if (!this.gate()) return;
     if (this.answered.has(idx)) return;
     this.answered.add(idx);
-    const remaining = v.deadline - Date.now();
-    const thinkMs = Math.max(600, Math.min(rand(1200, 7000), remaining - 900));
-    setTimeout(() => this.answer(idx, remaining - thinkMs), thinkMs);
+    this.playRound(idx, v.deadline);
   }
 
-  private answer(idx: number, leftMs: number) {
+  /**
+   * 무대가 심심하지 않게: 초반에는 O/X를 거의 반반으로 오가며 서성이다가,
+   * 마감 5초 전(FINAL_WINDOW_MS)에 실력에 따라 정답 또는 오답으로 최종 이동한다.
+   */
+  private playRound(idx: number, deadline: number) {
     const correct = this.answers().get(idx);
-    if (!correct || !this.socket) return;
+    if (!correct) return;
     const wrong: 'O' | 'X' = correct === 'O' ? 'X' : 'O';
-    let choice: 'O' | 'X' = Math.random() < this.skill ? correct : wrong;
-    this.socket.emit('answer:choose', { index: idx, choice });
-    log(`  ${this.name} → ${choice}`);
-    // 25%는 한 번 고민하다 바꾼다(그중 절반은 다시 되돌린다)
-    if (Math.random() < 0.25 && leftMs > 2500) {
-      setTimeout(() => {
-        choice = choice === 'O' ? 'X' : 'O';
-        this.socket?.emit('answer:choose', { index: idx, choice });
-        log(`  ${this.name} → ${choice} (바꿈)`);
-        if (Math.random() < 0.5 && leftMs > 4500) {
-          setTimeout(() => {
-            choice = choice === 'O' ? 'X' : 'O';
-            this.socket?.emit('answer:choose', { index: idx, choice });
-            log(`  ${this.name} → ${choice} (다시 바꿈)`);
-          }, rand(900, 1600));
-        }
-      }, rand(900, 1800));
+    const final: 'O' | 'X' = Math.random() < this.skill ? correct : wrong;
+    const send = (choice: 'O' | 'X', tag = '') => {
+      if (this.gone || !this.socket?.connected) return;
+      this.socket.emit('answer:choose', { index: idx, choice });
+      log(`  ${this.name} → ${choice}${tag}`);
+    };
+
+    const now = Date.now();
+    const decideAt = deadline - FINAL_WINDOW_MS;
+    // 서성이는 구간: 첫 선택은 1~3초 뒤, 그 뒤 1.2~2.5초 간격으로 좌우를 오간다
+    let t = now + rand(900, 3000);
+    let wander: 'O' | 'X' = Math.random() < 0.5 ? 'O' : 'X';
+    let moves = 0;
+    while (t < decideAt - 600 && moves < 6) {
+      const at = t;
+      const choice = wander;
+      setTimeout(() => send(choice), at - now);
+      wander = wander === 'O' ? 'X' : 'O';
+      t += rand(1200, 2500);
+      moves += 1;
     }
+    // 마지막 5초: 실력대로 최종 선택. 사람처럼 조금 흩어지게 0~1.5초 지연
+    setTimeout(() => send(final, ' (최종)'), Math.max(300, decideAt - now + rand(0, 1500)));
   }
 }
 

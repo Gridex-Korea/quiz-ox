@@ -7,7 +7,9 @@ import { Avatar } from '../shared/Avatar';
 import { isSoundEnabled, play, unlockSound } from '../shared/sounds';
 import { loadJson, queryParam, saveJson } from '../shared/storage';
 import { useCountdown, useRoom } from '../shared/socket';
-import { QUESTION_IMAGE_RECT, STAGE_H, STAGE_W, SlotAllocator, ZONES, hash, positionsFor, zoneOf, zoneRects, type RevealPhase, type Slot, type ZoneKey, type ZoneName } from './layout';
+import { S2C as EV, type ChatMessage } from '@ox/shared';
+import { useChat } from '../shared/useChat';
+import { CHAT_PANEL_RECT, STAGE_H, STAGE_W, SlotAllocator, ZONES, hash, positionsFor, questionImageRect, zoneOf, zoneRects, type RevealPhase, type Slot, type ZoneKey, type ZoneName } from './layout';
 import './screen.css';
 
 const KEY_STORAGE = 'ox.screenKey';
@@ -81,6 +83,19 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   const [flash, setFlash] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<Leaving[]>([]);
   const [sound, setSound] = useState(isSoundEnabled());
+  const messages = useChat(room);
+  const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
+
+  // 채팅 말풍선: 보낸 사람 아바타 위에 5초 동안
+  useEffect(() => {
+    const off = room.on(EV.chatMessage, (p) => {
+      const m = p as ChatMessage;
+      const until = Date.now() + 5000;
+      setBubbles((cur) => ({ ...cur, [m.playerId]: { text: m.text, until } }));
+      setTimeout(() => setBubbles((cur) => (cur[m.playerId]?.until === until ? Object.fromEntries(Object.entries(cur).filter(([k]) => k !== m.playerId)) : cur)), 5200);
+    });
+    return off;
+  }, [room]);
   const allocRef = useRef(new SlotAllocator());
   const lastSlots = useRef(new Map<string, Slot>());
   const lastTick = useRef<number>(-1);
@@ -190,6 +205,7 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   // ---- 배치 계산 ----
   const inRoundNow = ['QUESTION_SHOWN', 'ANSWERING', 'TIME_UP', 'REVEALED'].includes(view.status);
   const questionImage = inRoundNow ? view.question?.imageUrl ?? null : null;
+  const chatOn = view.chatEnabled;
   const { slots, dims } = useMemo(() => {
     const byZone = new Map<ZoneKey, string[]>();
     for (const p of view.players) {
@@ -199,7 +215,7 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       arr.push(p.id);
       byZone.set(z, arr);
     }
-    const rects = zoneRects(!!questionImage);
+    const rects = zoneRects({ hasImage: !!questionImage, chat: chatOn });
     const slots = new Map<string, Slot>();
     for (const zone of Object.keys(ZONES) as ZoneName[]) {
       const members = byZone.get(zone) ?? [];
@@ -209,7 +225,8 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
     const dims = new Set<string>();
     if (view.status === 'REVEALED' && view.outcomes) for (const o of view.outcomes) if (!o.correct) dims.add(o.playerId);
     return { slots, dims };
-  }, [view, phase, questionImage]);
+  }, [view, phase, questionImage, chatOn]);
+  const rects = zoneRects({ hasImage: !!questionImage, chat: chatOn });
 
   useEffect(() => {
     for (const [id, s] of slots) lastSlots.current.set(id, s);
@@ -228,7 +245,7 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   const winner = view.winnerId ? view.players.find((p) => p.id === view.winnerId) : undefined;
 
   return (
-    <>
+    <div className={`stage-inner ${chatOn ? 'with-chat' : ''}`}>
       {/* 상단 */}
       <header className="s-header">
         <div className="s-title">
@@ -266,21 +283,24 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
 
       {/* 사진 문제 */}
       {questionImage && (
-        <div className="qimage-frame" style={rectStyle(QUESTION_IMAGE_RECT)}>
+        <div className="qimage-frame" style={rectStyle(questionImageRect(chatOn))}>
           <img className="qimage" src={questionImage} alt="" />
         </div>
       )}
 
+      {/* 채팅 패널 */}
+      {chatOn && <ChatPanel messages={messages} />}
+
       {/* 구역 */}
       {showZones && (
         <>
-          <Zone rect={ZONES.O} cls={`zone o ${view.status === 'REVEALED' ? (view.answer === 'O' ? 'correct' : 'wrong') : ''}`} label="O" count={countsVisible && view.counts ? view.counts.O : null} />
-          <Zone rect={ZONES.center} cls="zone center" label="" count={countsVisible && view.counts && view.counts.none > 0 ? view.counts.none : null} countLabel="미응답" />
-          <Zone rect={ZONES.X} cls={`zone x ${view.status === 'REVEALED' ? (view.answer === 'X' ? 'correct' : 'wrong') : ''}`} label="X" count={countsVisible && view.counts ? view.counts.X : null} />
+          <Zone rect={{ ...rects.O, y: 190, h: 660 }} cls={`zone o ${view.status === 'REVEALED' ? (view.answer === 'O' ? 'correct' : 'wrong') : ''}`} label="O" count={countsVisible && view.counts ? view.counts.O : null} />
+          <Zone rect={{ ...rects.center, y: 190, h: 660 }} cls="zone center" label="" count={countsVisible && view.counts && view.counts.none > 0 ? view.counts.none : null} countLabel="미응답" />
+          <Zone rect={{ ...rects.X, y: 190, h: 660 }} cls={`zone x ${view.status === 'REVEALED' ? (view.answer === 'X' ? 'correct' : 'wrong') : ''}`} label="X" count={countsVisible && view.counts ? view.counts.X : null} />
         </>
       )}
       {(inRound || view.status === 'ENDED') && (
-        <div className="strip" style={rectStyle(ZONES.strip)}>
+        <div className="strip" style={rectStyle(rects.strip)}>
           <span className="strip-label">
             {view.status === 'ENDED' ? `대기실·탈락 ${stageCounts.waiting + stageCounts.eliminated}명` : isRevival ? `생존자석 ${stripPlayers.length}명` : `대기실 ${stripPlayers.length}명`}
           </span>
@@ -298,7 +318,15 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
           const dim = dims.has(p.id) || !p.connected;
           const isWinner = winner?.id === p.id;
           return (
-            <Sprite key={p.id} player={p} slot={slot} dim={dim} winner={isWinner} showCheck={!view.liveMoves && view.status === 'ANSWERING' && !!p.hasAnswered} />
+            <Sprite
+              key={p.id}
+              player={p}
+              slot={slot}
+              dim={dim}
+              winner={isWinner}
+              showCheck={!view.liveMoves && view.status === 'ANSWERING' && !!p.hasAnswered}
+              bubble={bubbles[p.id]?.text}
+            />
           );
         })}
         {leaving.map((l) => (
@@ -325,7 +353,28 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       >
         {sound ? '🔊 사운드 켜짐' : '🔇 사운드 켜기'}
       </button>
-    </>
+    </div>
+  );
+}
+
+function ChatPanel({ messages }: { messages: ChatMessage[] }) {
+  const recent = messages.slice(-14);
+  return (
+    <aside className="chat-panel" style={rectStyle(CHAT_PANEL_RECT)}>
+      <div className="chat-title">💬 채팅</div>
+      <div className="chat-list">
+        {recent.length === 0 && <div className="chat-empty">폰에서 응원 메시지를 보내 보세요</div>}
+        {recent.map((m) => (
+          <div key={m.id} className="chat-item">
+            <Avatar spec={m.avatar} size={30} />
+            <div className="chat-body">
+              <span className="chat-name">{m.name}</span>
+              <span className="chat-text">{m.text}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -347,7 +396,23 @@ function Zone({ rect, cls, label, count, countLabel }: { rect: { x: number; y: n
   );
 }
 
-function Sprite({ player, slot, dim, winner, showCheck, leaving }: { player: PublicPlayer; slot: Slot; dim: boolean; winner?: boolean; showCheck?: boolean; leaving?: boolean }) {
+function Sprite({
+  player,
+  slot,
+  dim,
+  winner,
+  showCheck,
+  leaving,
+  bubble,
+}: {
+  player: PublicPlayer;
+  slot: Slot;
+  dim: boolean;
+  winner?: boolean;
+  showCheck?: boolean;
+  leaving?: boolean;
+  bubble?: string;
+}) {
   const h = hash(player.id);
   const style: React.CSSProperties & Record<string, string | number> = {
     transform: `translate(${slot.x - slot.size / 2}px, ${slot.y - slot.size / 2}px)`,
@@ -368,6 +433,11 @@ function Sprite({ player, slot, dim, winner, showCheck, leaving }: { player: Pub
           {winner && <div className="crown">👑</div>}
           {showCheck && <div className="check">✓</div>}
           {leaving && <div className="out-tag">탈락</div>}
+          {bubble && (
+            <div className="bubble" key={bubble}>
+              {bubble}
+            </div>
+          )}
           <Avatar spec={player.avatar} size={slot.size} dim={dim} />
           <div className="name" style={{ fontSize: Math.max(12, slot.size * 0.24) }}>
             {player.name}

@@ -267,3 +267,79 @@ button.big {
   font-size: 28px;
   margin: 10px 0 0;
 }
+
+/* 채팅 서랍 */
+.chat-drawer {
+  margin-top: auto;
+  background: var(--bg-2);
+  border-radius: 14px;
+  overflow: hidden;
+  flex: none;
+}
+.chat-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border-radius: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  text-align: left;
+}
+.chat-toggle > span:first-child {
+  font-weight: 700;
+  flex: none;
+}
+.chat-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-2);
+}
+.chat-preview b {
+  color: var(--accent);
+  margin-right: 4px;
+}
+.chat-caret {
+  color: var(--muted);
+  flex: none;
+}
+.chat-messages {
+  max-height: 32dvh;
+  overflow-y: auto;
+  padding: 4px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+.chat-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-line b {
+  color: var(--accent);
+  flex: none;
+}
+.chat-line.mine b {
+  color: #86efac;
+}
+.chat-line span {
+  word-break: break-word;
+}
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--bg-3);
+}
+.chat-input input {
+  padding: 10px 12px;
+}
+.chat-input button {
+  flex: none;
+}

@@ -24,12 +24,31 @@ export const ZONES: Record<ZoneName, Rect> = {
   strip: { x: 60, y: 900, w: 1800, h: 150 },
 };
 
-/** 사진 문제일 때 중앙 구역 윗부분에 사진이 들어가고, 미선택 아바타는 그 아래에서 배회한다 */
-export const QUESTION_IMAGE_RECT: Rect = { x: 720, y: 200, w: 480, h: 380 };
+/** 채팅 패널이 켜져 있을 때의 구역: 오른쪽 340px를 패널에 내주고 무대를 1460px로 줄인다 */
+export const ZONES_WITH_CHAT: Record<ZoneName, Rect> = {
+  lobby: { x: 40, y: 560, w: 1460, h: 300 },
+  O: { x: 40, y: 190, w: 520, h: 660 },
+  center: { x: 580, y: 190, w: 380, h: 660 },
+  X: { x: 980, y: 190, w: 520, h: 660 },
+  strip: { x: 40, y: 900, w: 1460, h: 150 },
+};
+export const CHAT_PANEL_RECT: Rect = { x: 1540, y: 190, w: 340, h: 860 };
 
-export function zoneRects(hasImage: boolean): Record<ZoneName, Rect> {
-  if (!hasImage) return ZONES;
-  return { ...ZONES, center: { x: 700, y: 600, w: 520, h: 250 } };
+export interface LayoutOptions {
+  hasImage: boolean;
+  chat: boolean;
+}
+
+/** 사진 문제일 때 중앙 구역 윗부분에 사진이 들어가고, 미선택 아바타는 그 아래에서 배회한다 */
+export function questionImageRect(chat: boolean): Rect {
+  return chat ? { x: 590, y: 200, w: 360, h: 330 } : { x: 720, y: 200, w: 480, h: 380 };
+}
+
+export function zoneRects({ hasImage, chat }: LayoutOptions): Record<ZoneName, Rect> {
+  const base = chat ? ZONES_WITH_CHAT : ZONES;
+  if (!hasImage) return base;
+  const c = base.center;
+  return { ...base, center: { x: c.x, y: 560, w: c.w, h: 290 } };
 }
 
 export type RevealPhase = 'none' | 'hold';
