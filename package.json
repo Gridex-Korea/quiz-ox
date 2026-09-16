@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "test": "npm run test -w server",
     "start": "node server/dist/index.js",
-    "simulate": "node --import tsx tools/simulate.ts"
+    "simulate": "node --import tsx tools/simulate.ts",
+    "bots": "node --import tsx tools/bots.ts"
   },
   "engines": {
     "node": ">=22.13"
