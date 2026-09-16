@@ -54,6 +54,12 @@ export const api = {
   importJson: (token: string, questions: QuestionInput[]) =>
     request<{ imported: number; errors: string[] }>('/api/host/questions', { ...json({ questions }, token), method: 'PUT' }),
   purgePhones: (token: string) => request<{ purgedAt: number }>('/api/host/purge-phones', json({ confirm: true }, token)),
+  uploadImage: (token: string, blob: Blob) =>
+    request<{ id: string; url: string; size: number }>('/api/host/images', {
+      method: 'POST',
+      headers: { 'content-type': blob.type || 'image/jpeg', authorization: `Bearer ${token}` },
+      body: blob,
+    }),
   async downloadCsv(token: string, filename: string) {
     const res = await fetch('/api/host/export.csv', { headers: { authorization: `Bearer ${token}` } });
     if (!res.ok) throw new ApiError(res.status, 'export_failed', 'CSV 내보내기에 실패했습니다.');

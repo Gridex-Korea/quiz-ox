@@ -66,6 +66,29 @@ describe('Store', () => {
     store.close();
   });
 
+  it('문제 사진은 방 저장과 별개로 보관되어 전체 교체 저장에도 남는다', () => {
+    const store = new Store(':memory:');
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    store.putImage('11111111-1111-4111-8111-111111111111', 'image/png', bytes);
+    store.save(sampleState());
+    const img = store.getImage('11111111-1111-4111-8111-111111111111');
+    expect(img?.mime).toBe('image/png');
+    expect(Array.from(img!.bytes)).toEqual(Array.from(bytes));
+    expect(store.getImage('nope')).toBeNull();
+    store.deleteImage('11111111-1111-4111-8111-111111111111');
+    expect(store.getImage('11111111-1111-4111-8111-111111111111')).toBeNull();
+    store.close();
+  });
+
+  it('부활전 대기 상태(pendingRevival)가 저장·복원된다', () => {
+    const store = new Store(':memory:');
+    const state = sampleState();
+    state.room.pendingRevival = true;
+    store.save(state);
+    expect(store.load()!.room.pendingRevival).toBe(true);
+    store.close();
+  });
+
   it('빈 DB는 null', () => {
     const store = new Store(':memory:');
     expect(store.load()).toBeNull();

@@ -29,9 +29,11 @@ related: ["[[game-flow]]", "[[data-model]]", "[[ADR-0001-realtime-socketio]]"]
 | 메서드 · 경로 | 누가 | 요청 | 응답 |
 |---|---|---|---|
 | `POST /api/join` | 참가자 | `{ roomCode, phone, name, avatar? , consent: true }` | `201 { playerId, sessionToken, avatar }` / `409 { reason: "locked" \| "eliminated" }` / `400` 검증 실패. 같은 번호 재입장은 `200`으로 기존 자리 복귀 |
-| `GET /api/room/public` | 누구나 | — | `{ status, playerCount, joinUrl }` (QR 표시용, 개인정보 없음) |
+| `GET /api/room/public` | 누구나 | — | `{ status, roomCode, playerCount, joinUrl }` (QR 표시용, 개인정보 없음). `joinUrl`은 `<PUBLIC_URL>/join`으로 **방 코드를 넣지 않는다**: QR을 미리 인쇄해 배포하므로 게임 초기화로 코드가 바뀌어도 인쇄물이 유효해야 한다 |
 | `POST /api/host/login` | 사회자 | `{ pin }` | 쿠키 설정. 5회 실패 시 10분 잠금 |
 | `PUT /api/host/questions` | 사회자 | JSON 배열 또는 CSV(multipart) | 검증 결과와 저장된 문제 수 |
+| `POST /api/host/images` | 사회자 | 본문 = 이미지 바이트, `Content-Type: image/jpeg\|png\|webp\|gif`, 3MB 이하 | `201 { id, url: "/api/images/<id>", size }`. 콘솔이 브라우저에서 긴 변 1280px로 줄여 올린다. SQLite `images` 테이블에 보관되어 스냅샷에 포함 |
+| `GET /api/images/:id` | 누구나 | — | 이미지 바이트. `Cache-Control: immutable`. 문제의 `imageUrl`이 이 주소를 가리킨다 |
 | `GET /api/host/export.csv` | 사회자 | — | 참가자 목록 CSV(이름, 전화번호, 최종 상태, 탈락 문제 번호) |
 | `POST /api/host/purge-phones` | 사회자 | `{ confirm: true }` | 전화번호 컬럼 삭제. 되돌릴 수 없음 |
 
@@ -70,12 +72,15 @@ type PublicPlayer = { id: string; name: string; avatar: AvatarSpec; status: "ACT
 
 type RoundMode = "NORMAL" | "REVIVAL";
 
-// 참가자 폰이 받는 것: 남의 선택은 없다. canAnswer는 서버가 계산한 이번 라운드 자격
-type RoomStateForPlayer = { status: RoomStatus; mode?: RoundMode; me: PublicPlayer; canAnswer: boolean; question?: QuestionPublic; deadline?: number; playerCount: number };
+// 참가자 폰이 받는 것: 남의 선택은 없다. canAnswer는 서버가 계산한 이번 라운드 자격.
+// autoStartAt(자동 타이머 시작 시각), pendingRevival(다음은 부활전), finaleAt(결승 발표 예약), isFinalist(내가 결승 진출자)
+type RoomStateForPlayer = { status: RoomStatus; mode?: RoundMode; me: PublicPlayer; canAnswer: boolean; question?: QuestionPublic; deadline?: number; autoStartAt?: number; pendingRevival: boolean; finaleAt?: number; isFinalist: boolean; playerCount: number };
 
 // 스크린이 받는 것: 전원 위치를 다시 그릴 수 있어야 한다. mode로 무대 교대 상태를 복원.
-// players[].choice는 liveMoves이거나 TIME_UP 이후에만 채우고, 숨김 모드의 ANSWERING 중에는 hasAnswered만 준다
-type RoomStateForScreen = { status: RoomStatus; mode?: RoundMode; liveMoves?: boolean; players: (PublicPlayer & { hasAnswered?: boolean })[]; question?: QuestionPublic; deadline?: number; counts?: {O:number;X:number;none:number}; answer?: "O"|"X"; winnerId?: string; joinUrl: string };
+// players[].choice는 liveMoves이거나 TIME_UP 이후에만 채우고, 숨김 모드의 ANSWERING 중에는 hasAnswered만 준다.
+// finalists는 ENDED이고 생존자가 결승 인원 이하일 때만 채우며, 이때만 phoneTail(뒷번호 4자리)이 실린다
+type Finalist = PublicPlayer & { phoneTail: string | null };
+type RoomStateForScreen = { status: RoomStatus; mode?: RoundMode; liveMoves?: boolean; players: (PublicPlayer & { hasAnswered?: boolean })[]; question?: QuestionPublic; deadline?: number; autoStartAt?: number; pendingRevival: boolean; finaleAt?: number; finalists?: Finalist[]; counts?: {O:number;X:number;none:number}; answer?: "O"|"X"; winnerId?: string; joinUrl: string };
 
 // 사회자: 스크린 것 + 정답 + 전화번호 + 진행 인덱스
 type RoomStateForHost = RoomStateForScreen & { questions: Question[]; currentIndex: number; config: RoomConfig; phones: Record<string,string> };

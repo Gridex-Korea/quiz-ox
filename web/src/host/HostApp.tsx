@@ -16,6 +16,7 @@ import {
 import QRCode from 'qrcode';
 import { api, ApiError } from '../shared/api';
 import { Avatar } from '../shared/Avatar';
+import { resizeImage } from '../shared/image';
 import { loadJson, removeKey, saveJson } from '../shared/storage';
 import { useCountdown, useRoom } from '../shared/socket';
 import './host.css';
@@ -143,6 +144,7 @@ function Console({
   const [tab, setTab] = useState<Tab>('players');
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
   const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
+  const finaleIn = useCountdown(view.status === 'REVEALED' ? view.finaleAt : null, room.now);
   const counts = useMemo(() => {
     const c: Record<string, number> = { ACTIVE: 0, WAITING: 0, ELIMINATED: 0 };
     for (const p of view.players) c[p.status] = (c[p.status] ?? 0) + 1;
@@ -162,7 +164,8 @@ function Console({
   const question = view.question ? view.questions.find((q) => q.orderNo === view.question!.index) : undefined;
   const nextNormal = view.questions.find((q) => q.usedAt === null && q.kind === 'NORMAL');
   const suggestRevival =
-    view.status === 'REVEALED' && view.revivalUsedCount === 0 && view.mode === 'NORMAL' && view.currentIndex >= view.config.revivalAfterOrderNo && counts['WAITING']! > 0;
+    view.status === 'REVEALED' &&
+    (view.pendingRevival || (view.revivalUsedCount === 0 && view.mode === 'NORMAL' && view.currentIndex >= view.config.revivalAfterOrderNo && counts['WAITING']! > 0));
 
   const emit = (event: string, payload?: unknown) => room.emit(event, payload);
 
@@ -186,7 +189,20 @@ function Console({
       case 'TIME_UP':
         return { label: '정답 공개', onClick: () => emit(C2S.hostReveal), disabled: false };
       case 'REVEALED':
-        if (suggestRevival) return { label: `🔥 패자부활전 시작 (대기실 ${counts['WAITING']}명)`, onClick: () => emit(C2S.hostStartRevival, {}), disabled: false };
+        if (suggestRevival)
+          return {
+            label: view.pendingRevival
+              ? `🔥 패자부활전 시작 · 생존 ${counts['ACTIVE']}명이라 부활전 먼저 (대기실 ${counts['WAITING']}명)`
+              : `🔥 패자부활전 시작 (대기실 ${counts['WAITING']}명)`,
+            onClick: () => emit(C2S.hostStartRevival, {}),
+            disabled: false,
+          };
+        if (view.finaleAt)
+          return {
+            label: `🎉 ${finaleIn !== null ? Math.ceil(finaleIn / 1000) : 0}초 뒤 결승 진출자 발표 · 지금 발표`,
+            onClick: () => emit(C2S.hostEnd),
+            disabled: false,
+          };
         return nextNormal
           ? { label: `다음 문제 · Q${nextNormal.orderNo + 1}`, onClick: () => emit(C2S.hostNext), disabled: false }
           : { label: '게임 종료 · 생존자 발표', onClick: () => emit(C2S.hostNext), disabled: false };
@@ -468,7 +484,23 @@ function Questions({ view, emit, token, toast }: { view: RoomStateForHost; emit:
   const [editing, setEditing] = useState<Partial<Question> | null>(null);
   const [importText, setImportText] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const pickImage = async (file: File | undefined) => {
+    if (!file || !editing) return;
+    setUploading(true);
+    try {
+      const blob = await resizeImage(file);
+      const r = await api.uploadImage(token, blob);
+      setEditing((cur) => (cur ? { ...cur, imageUrl: r.url } : cur));
+      toast('info', `사진 업로드 완료 (${Math.round(r.size / 1024)}KB)`);
+    } catch (e) {
+      toast('error', (e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const doImport = async (text: string) => {
     const trimmed = text.trim();
@@ -556,7 +588,28 @@ function Questions({ view, emit, token, toast }: { view: RoomStateForHost; emit:
             </label>
           </div>
           <input placeholder="해설(선택)" value={editing.explanation ?? ''} onChange={(e) => setEditing({ ...editing, explanation: e.target.value })} />
-          <input placeholder="이미지 URL(선택)" value={editing.imageUrl ?? ''} onChange={(e) => setEditing({ ...editing, imageUrl: e.target.value })} />
+          <div className="row image-row">
+            {editing.imageUrl ? (
+              <img src={editing.imageUrl} alt="" className="qthumb" />
+            ) : (
+              <span className="muted">사진 없음</span>
+            )}
+            <label className="button-like small" style={{ cursor: 'pointer' }}>
+              {uploading ? '업로드 중…' : '📷 사진 선택'}
+              <input type="file" accept="image/*" style={{ display: 'none' }} disabled={uploading} onChange={(e) => void pickImage(e.target.files?.[0])} />
+            </label>
+            {editing.imageUrl && (
+              <button className="small ghost" onClick={() => setEditing({ ...editing, imageUrl: null })}>
+                사진 제거
+              </button>
+            )}
+            <input
+              placeholder="또는 이미지 URL 직접 입력"
+              value={editing.imageUrl ?? ''}
+              onChange={(e) => setEditing({ ...editing, imageUrl: e.target.value || null })}
+              style={{ flex: 1, minWidth: 200 }}
+            />
+          </div>
           <div className="row">
             <button className="small primary" onClick={save} disabled={!editing.text}>
               저장
@@ -572,6 +625,7 @@ function Questions({ view, emit, token, toast }: { view: RoomStateForHost; emit:
           <li key={q.id} className={`${q.orderNo === view.currentIndex && view.status !== 'LOBBY' && view.status !== 'LOCKED' ? 'current' : ''} ${q.usedAt !== null ? 'used' : ''}`}>
             <span className="qno">Q{q.orderNo + 1}</span>
             {q.kind === 'REVIVAL' && <span className="badge danger small-badge">♻ 부활전</span>}
+            {q.imageUrl && <img src={q.imageUrl} alt="" className="qthumb small" title="사진 문제" />}
             <span className="qtext">{q.text}</span>
             <span className={`badge ${q.answer === 'O' ? 'o' : 'x'}`}>{q.answer}</span>
             <span className="muted">{q.timeLimitSec ?? view.config.defaultTimeLimitSec}초</span>
@@ -641,7 +695,14 @@ function Settings({ view, emit, token, toast }: { view: RoomStateForHost; emit: 
             자동 시작 준비 카운트(초, 0이면 즉시)
             <input type="number" min={0} max={30} value={cfg.autoStartDelaySec} disabled={!cfg.autoStart} onChange={(e) => setCfg({ ...cfg, autoStartDelaySec: Number(e.target.value) })} />
           </label>
+          <label>
+            결승 진출 인원(이하가 되면 축하 화면, 0이면 끔)
+            <input type="number" min={0} max={20} value={cfg.finalistThreshold} onChange={(e) => setCfg({ ...cfg, finalistThreshold: Number(e.target.value) })} />
+          </label>
         </div>
+        <p className="muted" style={{ margin: 0 }}>
+          생존자가 결승 인원 이하가 되면: 패자부활전을 아직 안 열었고 대기실이 있으면 부활전을 먼저 제안하고, 그 뒤 6초 후 결승 진출자(이름·뒷번호 4자리) 축하 화면으로 넘어갑니다. 결승은 무대에서 진행하고 우승자를 지정하세요.
+        </p>
         <p className="muted" style={{ margin: 0 }}>
           미응답은 항상 오답입니다. 게임 중에는 부활전 시점, 이동 공개 시점, 자동 시작만 바꿀 수 있습니다.
         </p>

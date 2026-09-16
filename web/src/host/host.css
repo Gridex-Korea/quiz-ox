@@ -221,6 +221,21 @@ td.actions button {
   font-size: 11px;
   padding: 2px 6px;
 }
+.qthumb {
+  width: 96px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #000;
+}
+.qthumb.small {
+  width: 40px;
+  height: 30px;
+  border-radius: 4px;
+}
+.image-row {
+  align-items: center;
+}
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

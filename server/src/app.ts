@@ -60,7 +60,8 @@ export async function buildApp(opts: AppOptions): Promise<App> {
 
   const game = new GameService(store, state, fastify.log);
   const hostTokens = new HostTokens(opts.hostTokenTtlMs);
-  const joinUrl = () => `${opts.publicUrl}/join?room=${encodeURIComponent(game.state.room.code)}`;
+  // QR은 인쇄해서 배포하므로 방 코드를 넣지 않는다. 게임 초기화로 코드가 바뀌어도 인쇄물이 계속 유효하다
+  const joinUrl = () => `${opts.publicUrl}/join`;
 
   const io = new IOServer(fastify.server, {
     cors: { origin: true, credentials: true },
@@ -71,7 +72,7 @@ export async function buildApp(opts: AppOptions): Promise<App> {
   const emitter = createGateway(io, game, { screenKey: opts.screenKey, hostTokens, joinUrl });
   game.attach(emitter);
 
-  registerRoutes(fastify, game, { hostPin: opts.hostPin, hostTokens, joinUrl });
+  registerRoutes(fastify, game, { hostPin: opts.hostPin, hostTokens, joinUrl, store });
 
   if (opts.webDist && existsSync(join(opts.webDist, 'index.html'))) {
     const indexHtml = readFileSync(join(opts.webDist, 'index.html'));

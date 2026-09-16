@@ -89,6 +89,9 @@ erDiagram
 | `deadline_at` | INTEGER | NULL 허용 | `ANSWERING`일 때 마감 서버 시각(ms). 복구 시 신뢰하지 않음 |
 | `config` | JSON | | `{ defaultTimeLimitSec: 15, maxStrikes: 2, revivalAfterOrderNo: 4, liveMovesUntilOrderNo: 3, answerGraceMs: 300, answerRateLimitMs: 300, autoStart: true, autoStartDelaySec: 3 }`. `autoStart`·`autoStartDelaySec`는 문제 공개 뒤 타이머 자동 시작 여부와 준비 카운트(초). `revivalAfterOrderNo`는 패자부활전 예정 시점(이 `order_no` 문제의 정답 공개 뒤, 0부터 세므로 콘솔에는 5번으로 표시), 기본값은 문제 수의 절반 지점. `liveMovesUntilOrderNo`는 아바타 이동을 실시간으로 보여주는 마지막 문제(콘솔에는 4번까지로 표시), 그 뒤 문제는 숨김 모드. 둘 다 언제든 변경 가능. 미응답=오답은 규칙이므로 설정이 없다 |
 | `revival_used_count` | INTEGER | 기본 0 | 패자부활전을 연 횟수. 1 이상이면 추가 부활전은 `force` 필요 |
+| `pending_revival` | INTEGER | 0/1 | 생존자가 결승 인원 이하인데 부활전을 아직 안 열어 다음 단계가 부활전인 상태 → [[game-flow]] 결승 규칙 |
+| `finale_at` | INTEGER | NULL 허용 | 결승 발표(ENDED) 자동 전환 예정 시각. 재시작 시 신뢰하지 않음(예약 자체는 메모리) |
+| `config.finalistThreshold` | (config JSON) | 기본 3 | 결승 진출 인원. 0이면 규칙 끔 |
 | `winner_player_id` | TEXT | NULL 허용, FK players | 오프라인 결승 뒤 사회자가 지정한 우승자. `ENDED`에서만 채움 |
 | `created_at`, `updated_at` | TEXT | ISO 8601 | |
 
@@ -150,6 +153,18 @@ erDiagram
 | `revealed_at` | TEXT | | |
 | `undone` | INTEGER | 0/1 | 되돌린 라운드 표시. 같은 문제를 다시 공개하면 새 행으로 덮어씀 |
 
+### images (문제 사진)
+
+| 필드 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `id` | TEXT | PK, UUID | `imageUrl = /api/images/<id>` |
+| `mime` | TEXT | `image/jpeg \| png \| webp \| gif` | |
+| `bytes` | BLOB | 3MB 이하(콘솔이 1280px로 줄여 보통 100~300KB) | |
+| `size` | INTEGER | | |
+| `created_at` | INTEGER | | |
+
+방 상태(`RoomState`)에 넣지 않고 따로 둔다. 상태를 `structuredClone`할 때 바이너리가 복사되지 않게 하기 위해서고, 전체 교체 저장(`save`)에서도 지우지 않는다. 게임 초기화 뒤에도 문제가 사진을 참조하므로 남겨 둔다. SQLite 파일에 들어 있어 GCS 스냅샷에 함께 복사된다.
+
 ## 인메모리 구조와 SQLite의 관계
 
 ```ts
@@ -187,7 +202,7 @@ type RoomState = {
 
 > [!warning] 주의
 > `players.phone`은 이 시스템에서 유일한 개인정보다. 다음을 지킨다.
-> - 스크린·참가자 이벤트에 절대 포함하지 않는다. `PublicPlayer` 타입에 필드 자체가 없다.
+> - 스크린·참가자 이벤트에 절대 포함하지 않는다. `PublicPlayer` 타입에 필드 자체가 없다. **유일한 예외**: 게임 종료 시 결승 진출자(기본 3명 이하)의 뒷번호 4자리(`Finalist.phoneTail`)를 무대 호명용으로 스크린에 띄운다(사회자 결정, 2026-09-17).
 > - 서버 로그에 남기지 않는다(요청 본문 로깅 금지).
 > - `POST /api/host/purge-phones`로 `phone`을 NULL로 바꾸고, 기동 시 `created_at`이 보관 기간(기본 7일)을 넘은 방은 자동으로 같은 처리를 한다.
 > - 백업 파일(SQLite)을 복사해 두었다면 그것도 같이 지워야 한다. 운영 체크리스트에 넣는다([[roadmap]]).

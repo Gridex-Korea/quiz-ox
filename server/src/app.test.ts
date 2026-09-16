@@ -96,7 +96,20 @@ describe('통합: 입장 → 라운드 → 판정 → 패자부활전', () => {
 
     const pub = (await (await fetch(base + '/api/room/public')).json()) as { playerCount: number; joinUrl: string; roomCode: string };
     expect(pub.playerCount).toBe(2);
-    expect(pub.joinUrl).toBe(`http://test.local/join?room=${pub.roomCode}`);
+    expect(pub.joinUrl).toBe('http://test.local/join'); // 인쇄용 QR: 방 코드 없이
+
+    // 문제 사진 업로드·조회
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9, 9]);
+    expect((await fetch(base + '/api/host/images', { method: 'POST', headers: { 'content-type': 'image/png' }, body: png })).status).toBe(401);
+    expect((await fetch(base + '/api/host/images', { method: 'POST', headers: { 'content-type': 'text/plain', authorization: `Bearer ${hostToken}` }, body: 'x' })).status).toBe(415);
+    const up = await fetch(base + '/api/host/images', { method: 'POST', headers: { 'content-type': 'image/png', authorization: `Bearer ${hostToken}` }, body: png });
+    expect(up.status).toBe(201);
+    const { url } = (await up.json()) as { url: string };
+    const got = await fetch(base + url);
+    expect(got.status).toBe(200);
+    expect(got.headers.get('content-type')).toBe('image/png');
+    expect(Buffer.from(await got.arrayBuffer()).equals(png)).toBe(true);
+    expect((await fetch(base + '/api/images/00000000-0000-4000-8000-000000000000')).status).toBe(404);
 
     // 소켓 연결: 잘못된 키/토큰은 거절
     await expect(open({ role: 'screen', key: 'nope' })).rejects.toThrow();

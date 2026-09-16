@@ -162,12 +162,25 @@ class Bot {
 async function main() {
   const args = parseArgs();
   const lastIndex = args.until > 0 ? args.until - 1 : -1;
-  const login = await fetch(`${args.url}/api/host/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin: args.pin }) });
-  if (!login.ok) throw new Error(`사회자 로그인 실패(${login.status}) — 정답을 읽기 위해 PIN이 필요합니다`);
-  const { token } = (await login.json()) as { token: string };
+  const hostLogin = async () => {
+    const login = await fetch(`${args.url}/api/host/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin: args.pin }) });
+    if (!login.ok) throw new Error(`사회자 로그인 실패(${login.status}) — 정답을 읽기 위해 PIN이 필요합니다`);
+    return ((await login.json()) as { token: string }).token;
+  };
+  const token = await hostLogin();
 
   const answers = new Map<number, 'O' | 'X'>();
   const host = io(args.url, { auth: { role: 'host', token }, transports: ['websocket'] });
+  // 서버가 재시작되면 사회자 토큰이 사라지므로 다시 로그인해 붙는다
+  host.on('connect_error', (e: Error) => {
+    if (e.message !== 'invalid_host') return;
+    void hostLogin()
+      .then((t) => {
+        (host.auth as Record<string, unknown>)['token'] = t;
+        host.connect();
+      })
+      .catch((err) => log(`사회자 재로그인 실패: ${(err as Error).message}`));
+  });
   let lastStatus = '';
   let leaving = false;
   const bots: Bot[] = [];

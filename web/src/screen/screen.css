@@ -120,6 +120,11 @@
   background: rgba(148, 163, 184, 0.2);
   color: var(--fg-2);
 }
+.s-banner.finale {
+  background: linear-gradient(90deg, #f59e0b, #fde68a);
+  color: #1c1917;
+  animation: pulse 1.6s ease-in-out infinite;
+}
 .s-banner.explain {
   background: rgba(167, 139, 250, 0.2);
   color: #e9d5ff;
@@ -338,6 +343,94 @@
 .lobby-text .locked {
   color: var(--warn);
   font-size: 28px;
+}
+
+/* 사진 문제 */
+.qimage-frame {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.8);
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  padding: 10px;
+  z-index: 3;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.qimage {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+/* 결승 진출자 축하 화면 */
+.finale-panel {
+  position: absolute;
+  top: 190px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  z-index: 4;
+  pointer-events: none;
+}
+.finale-title {
+  font-size: 110px;
+  font-weight: 900;
+  color: #fde68a;
+  text-shadow: 0 0 60px rgba(253, 230, 138, 0.6), 0 6px 30px rgba(0, 0, 0, 0.7);
+  animation: popIn 0.6s cubic-bezier(0.2, 1.4, 0.4, 1);
+  line-height: 1.1;
+}
+.finale-sub {
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--fg-2);
+  margin: 8px 0 36px;
+}
+.finale-cards {
+  display: flex;
+  justify-content: center;
+  gap: 60px;
+}
+.finale-card {
+  position: relative;
+  width: 440px;
+  padding: 34px 28px 30px;
+  border-radius: 32px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 3px solid rgba(253, 230, 138, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: popIn 0.6s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.finale-card.winner {
+  border-color: #fde68a;
+  box-shadow: 0 0 60px rgba(253, 230, 138, 0.45);
+}
+.finale-crown {
+  position: absolute;
+  top: -30px;
+  font-size: 40px;
+  font-weight: 900;
+  color: #fde68a;
+  background: #1e1b4b;
+  padding: 4px 22px;
+  border-radius: 999px;
+}
+.finale-name {
+  font-size: 72px;
+  font-weight: 900;
+  margin-top: 14px;
+  line-height: 1.1;
+}
+.finale-phone {
+  font-size: 56px;
+  font-weight: 800;
+  color: #fde68a;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
 }
 
 /* 오버레이 */

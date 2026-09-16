@@ -102,6 +102,40 @@ describe('GameService 자동 시작', () => {
     game.dispose();
   });
 
+  it('생존자가 결승 인원 이하면 정답 공개 6초 뒤 자동으로 결승 발표(ENDED)로 넘어가고, 그 사이 다음 문제로 가면 취소된다', () => {
+    const { emitter } = fakeEmitter();
+    const game = new GameService(null, lockedRoom(), { info: () => undefined, error: () => undefined });
+    game.attach(emitter);
+    const playerId = Object.keys(game.state.players)[0]!;
+    game.dispatch({ type: 'showQuestion' });
+    vi.advanceTimersByTime(3000); // 자동 시작
+    game.dispatch({ type: 'choose', playerId, index: 0, choice: 'O' });
+    vi.advanceTimersByTime(10_000); // 마감
+    game.dispatch({ type: 'reveal' });
+    expect(game.state.room.status).toBe('REVEALED');
+    expect(game.state.room.finaleAt).not.toBeNull();
+    vi.advanceTimersByTime(6000);
+    expect(game.state.room.status).toBe('ENDED');
+
+    // 다음 문제로 넘어가면 예약이 무효
+    const game2 = new GameService(null, lockedRoom(), { info: () => undefined, error: () => undefined });
+    game2.attach(fakeEmitter().emitter);
+    const p2 = Object.keys(game2.state.players)[0]!;
+    game2.dispatch({ type: 'showQuestion' });
+    vi.advanceTimersByTime(3000);
+    game2.dispatch({ type: 'choose', playerId: p2, index: 0, choice: 'O' });
+    vi.advanceTimersByTime(10_000);
+    game2.dispatch({ type: 'reveal' });
+    game2.dispatch({ type: 'next' });
+    expect(game2.state.room.status).toBe('QUESTION_SHOWN');
+    vi.advanceTimersByTime(2000);
+    expect(game2.state.room.status).toBe('QUESTION_SHOWN');
+    vi.advanceTimersByTime(10_000);
+    expect(game2.state.room.status).not.toBe('ENDED');
+    game.dispose();
+    game2.dispose();
+  });
+
   it('라운드 취소 뒤에는 자동 시작하지 않는다', () => {
     const { emitter } = fakeEmitter();
     const game = new GameService(null, lockedRoom(), { info: () => undefined, error: () => undefined });

@@ -13,7 +13,9 @@ export interface Rect {
   h: number;
 }
 
-export const ZONES: Record<Exclude<ZoneKey, 'hidden'>, Rect> = {
+export type ZoneName = Exclude<ZoneKey, 'hidden'>;
+
+export const ZONES: Record<ZoneName, Rect> = {
   // 로비·종료 화면: 상단 QR 카드/우승 자막과 겹치지 않게 아래쪽 띠에서 배회
   lobby: { x: 60, y: 560, w: 1800, h: 300 },
   O: { x: 40, y: 190, w: 640, h: 660 },
@@ -22,13 +24,22 @@ export const ZONES: Record<Exclude<ZoneKey, 'hidden'>, Rect> = {
   strip: { x: 60, y: 900, w: 1800, h: 150 },
 };
 
+/** 사진 문제일 때 중앙 구역 윗부분에 사진이 들어가고, 미선택 아바타는 그 아래에서 배회한다 */
+export const QUESTION_IMAGE_RECT: Rect = { x: 720, y: 200, w: 480, h: 380 };
+
+export function zoneRects(hasImage: boolean): Record<ZoneName, Rect> {
+  if (!hasImage) return ZONES;
+  return { ...ZONES, center: { x: 700, y: 600, w: 520, h: 250 } };
+}
+
 export type RevealPhase = 'none' | 'hold';
 
 /** 참가자가 서 있어야 할 구역. 상태·모드·공개 단계로 결정한다 */
 export function zoneOf(p: PublicPlayer, view: RoomStateForScreen, phase: RevealPhase): ZoneKey {
   const { status, mode } = view;
   if (status === 'LOBBY' || status === 'LOCKED') return p.status === 'ELIMINATED' ? 'hidden' : 'lobby';
-  if (status === 'ENDED') return p.status === 'ACTIVE' ? 'lobby' : 'hidden';
+  // 종료: 결승 진출자 카드가 뜨는 경우엔 아바타를 숨기고, 그 외에는 생존자만 아래에서 배회
+  if (status === 'ENDED') return view.finalists ? 'hidden' : p.status === 'ACTIVE' ? 'lobby' : 'hidden';
 
   const eligible = mode === 'REVIVAL' ? 'WAITING' : 'ACTIVE';
 
@@ -106,8 +117,7 @@ export class SlotAllocator {
 }
 
 /** 좌표 계산. 결정적 지터로 격자 느낌을 줄인다 */
-export function positionsFor(zone: Exclude<ZoneKey, 'hidden'>, seatIndex: Map<string, number>, isStrip: boolean): Map<string, Slot> {
-  const rect = ZONES[zone];
+export function positionsFor(zone: ZoneName, seatIndex: Map<string, number>, isStrip: boolean, rect: Rect = ZONES[zone]): Map<string, Slot> {
   const n = Math.max(seatIndex.size, Math.max(...seatIndex.values(), -1) + 1);
   const maxCell = isStrip ? 90 : zone === 'lobby' ? 140 : 120;
   const g = gridFor(rect, n, maxCell);

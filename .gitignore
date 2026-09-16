@@ -11,3 +11,4 @@ data/
 Thumbs.db
 coverage/
 .vite/
+*.tmp.ts

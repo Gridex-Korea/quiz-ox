@@ -48,6 +48,7 @@ export function countByStatus(state: RoomState): Record<PlayerStatus, number> {
  */
 export function shouldSuggestRevival(state: RoomState): boolean {
   if (state.room.status !== 'REVEALED') return false;
+  if (state.room.pendingRevival) return true;
   if (state.room.revivalUsedCount > 0) return false;
   if (state.room.roundMode !== 'NORMAL') return false;
   if (state.room.currentIndex < state.room.config.revivalAfterOrderNo) return false;

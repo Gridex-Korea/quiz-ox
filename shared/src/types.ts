@@ -39,6 +39,13 @@ export interface RoomConfig {
   autoStart: boolean;
   /** 자동 시작까지 준비 카운트(초). 0이면 공개와 동시에 시작 */
   autoStartDelaySec: number;
+  /** 무대 생존자가 이 인원 이하가 되면 결승 진출자 축하 화면으로 넘어간다(0이면 끔). 부활전을 아직 안 열었고 대기실이 있으면 부활전을 먼저 제안 */
+  finalistThreshold: number;
+}
+
+/** 결승 진출자: 무대에서 호명할 수 있게 뒷번호 4자리를 함께 보낸다(사회자 결정, ENDED에서만) */
+export interface Finalist extends PublicPlayer {
+  phoneTail: string | null;
 }
 
 export const DEFAULT_CONFIG: RoomConfig = {
@@ -50,6 +57,7 @@ export const DEFAULT_CONFIG: RoomConfig = {
   answerRateLimitMs: 300,
   autoStart: true,
   autoStartDelaySec: 3,
+  finalistThreshold: 3,
 };
 
 export interface Question {
@@ -166,6 +174,10 @@ export interface Room {
   deadlineAt: number | null;
   /** QUESTION_SHOWN에서 타이머가 자동 시작될 서버 시각(ms). 수동 모드면 null */
   autoStartAt: number | null;
+  /** 생존자가 결승 인원 이하인데 부활전을 아직 안 열어, 다음 단계가 패자부활전이어야 하는 상태 */
+  pendingRevival: boolean;
+  /** REVEALED에서 결승 진출자 발표(ENDED)로 자동 전환될 서버 시각(ms) */
+  finaleAt: number | null;
   revivalUsedCount: number;
   winnerPlayerId: string | null;
   config: RoomConfig;
@@ -197,6 +209,10 @@ export interface RoomStateForPlayer {
   question: QuestionPublic | null;
   deadline: number | null;
   autoStartAt: number | null;
+  pendingRevival: boolean;
+  finaleAt: number | null;
+  /** ENDED에서 내가 결승 진출자인가 */
+  isFinalist: boolean;
   playerCount: number;
   counts: Counts | null;
   answer: Choice | null;
@@ -216,6 +232,10 @@ export interface RoomStateForScreen {
   question: QuestionPublic | null;
   deadline: number | null;
   autoStartAt: number | null;
+  pendingRevival: boolean;
+  finaleAt: number | null;
+  /** ENDED이고 생존자가 결승 인원 이하일 때만 채움 */
+  finalists: Finalist[] | null;
   counts: Counts | null;
   answer: Choice | null;
   outcomes: Outcome[] | null;

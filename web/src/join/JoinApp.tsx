@@ -345,6 +345,8 @@ function Result({ view }: { view: RoomStateForPlayer }) {
       <p className="muted">정답은</p>
       <div className={`answer-big ${answer === 'O' ? 'o' : 'x'}`}>{answer}</div>
       {view.question?.explanation && <p className="explain">{view.question.explanation}</p>}
+      {view.pendingRevival && view.me.status === 'WAITING' && <p className="badge warn">🔥 곧 패자부활전이 열립니다. 준비하세요!</p>}
+      {view.finaleAt && view.me.status === 'ACTIVE' && <p className="badge ok">🎉 결승 진출! 잠시 후 발표됩니다</p>}
       {o === null ? (
         <p className="muted">관전 라운드였습니다. 다음 문제를 기다려 주세요.</p>
       ) : o.correct ? (
@@ -383,6 +385,12 @@ function Ended({ view, myId }: { view: RoomStateForPlayer; myId: string }) {
           <h2>우승자</h2>
           <Avatar spec={winner.avatar} size={96} />
           <p className="winner-name">{winner.name}</p>
+        </>
+      ) : view.isFinalist ? (
+        <>
+          <div className="crown">🎉</div>
+          <h2>축하합니다! 결승 진출</h2>
+          <p className="muted">사회자의 안내에 따라 무대로 나와 주세요. 현장 결승으로 우승자를 정합니다.</p>
         </>
       ) : (
         <>

@@ -1,8 +1,10 @@
 // HTTP API: 입장 등록, 공개 정보, 사회자 로그인·문제 업로드·CSV·전화번호 파기. 프로토콜: DOCS/design/realtime-protocol.md
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   AVATAR_PARTS,
+  IMAGE_MAX_BYTES,
+  IMAGE_MIME_TYPES,
   PHONE_DIGITS_RE,
   hostLoginSchema,
   joinRequestSchema,
@@ -14,6 +16,7 @@ import {
 import { hostView } from '../engine/views';
 import type { GameService } from '../game';
 import { participantsCsv, questionsFromCsv } from '../csv';
+import type { Store } from '../store/db';
 import { HostTokens, RateLimiter, safeEqual } from '../ws/hostTokens';
 import { hashToken } from '../ws/gateway';
 
@@ -21,6 +24,8 @@ export interface RoutesDeps {
   hostPin: string;
   hostTokens: HostTokens;
   joinUrl: () => string;
+  /** 문제 사진 저장소. 없으면 사진 업로드 불가 */
+  store: Store | null;
 }
 
 function randomAvatar(): AvatarSpec {
@@ -34,6 +39,7 @@ export function registerRoutes(app: FastifyInstance, game: GameService, deps: Ro
   const loginLimiter = new RateLimiter(5, 10 * 60_000);
 
   app.addContentTypeParser(['text/csv', 'text/plain'], { parseAs: 'string' }, (_req, body, done) => done(null, body));
+  app.addContentTypeParser([...IMAGE_MIME_TYPES], { parseAs: 'buffer', bodyLimit: IMAGE_MAX_BYTES }, (_req, body, done) => done(null, body));
 
   app.get('/api/health', async () => ({ ok: true, status: game.state.room.status }));
 
@@ -113,6 +119,28 @@ export function registerRoutes(app: FastifyInstance, game: GameService, deps: Ro
     const r = game.dispatch({ type: 'questionsReplace', questions });
     if (r.error) return reply.code(409).send({ message: game.errorMessage(r.error), errors });
     return { imported: questions.length, errors };
+  });
+
+  // 문제 사진: 콘솔이 브라우저에서 줄인 JPEG/PNG를 그대로 올리고, 참가자·스크린은 URL로 받는다(SQLite에 보관, 스냅샷에 포함)
+  app.post('/api/host/images', { preHandler: requireHost }, async (req, reply) => {
+    if (!deps.store) return reply.code(503).send({ message: '이미지 저장소를 쓸 수 없습니다.' });
+    const mime = (req.headers['content-type'] ?? '').split(';')[0]!.trim();
+    if (!(IMAGE_MIME_TYPES as readonly string[]).includes(mime) || !Buffer.isBuffer(req.body)) {
+      return reply.code(415).send({ message: 'JPEG, PNG, WebP, GIF 이미지를 본문으로 보내 주세요.' });
+    }
+    const id = randomUUID();
+    deps.store.putImage(id, mime, req.body);
+    return reply.code(201).send({ id, url: `/api/images/${id}`, size: req.body.byteLength });
+  });
+
+  app.get('/api/images/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/.test(id) || !deps.store) return reply.code(404).send({ message: 'Not found' });
+    const img = deps.store.getImage(id);
+    if (!img) return reply.code(404).send({ message: 'Not found' });
+    reply.header('Content-Type', img.mime);
+    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+    return reply.send(Buffer.from(img.bytes));
   });
 
   app.get('/api/host/export.csv', { preHandler: requireHost }, async (_req, reply) => {

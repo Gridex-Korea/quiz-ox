@@ -1,7 +1,7 @@
 // 엔진(순수)과 바깥세상(소켓·타이머·저장)을 잇는 서비스.
 // 명령 하나 = reduce 한 번 = effects 적용 한 번. 상태 전이(stateChanged)마다 저장하고 모든 화면에 room:state를 다시 보낸다.
 import { S2C, type RoomState } from '@ox/shared';
-import { ERROR_MESSAGES, reduce, type Command, type Effect, type Result, type Target } from './engine/reducer';
+import { ERROR_MESSAGES, reduce, type Command, type Effect, type Result, type ScheduleKey, type Target } from './engine/reducer';
 import type { Store } from './store/db';
 
 /** 게이트웨이가 구현하는 전송 인터페이스. 테스트에서는 가짜로 바꿔 끼운다 */
@@ -16,7 +16,7 @@ export interface Emitter {
 export class GameService {
   state: RoomState;
   private timer: NodeJS.Timeout | null = null;
-  private autoStartTimer: NodeJS.Timeout | null = null;
+  private scheduled = new Map<ScheduleKey, NodeJS.Timeout>();
   private pendingDisconnects = new Set<NodeJS.Timeout>();
   private emitter: Emitter | null = null;
   /** 재시작 복구 등, 다음 사회자 접속 때 보여줄 알림 */
@@ -32,8 +32,9 @@ export class GameService {
 
   attach(emitter: Emitter): void {
     this.emitter = emitter;
-    // 재시작 직후에는 자동 시작 예약이 사라졌으므로 사회자가 직접 시작한다
+    // 재시작 직후에는 예약(자동 시작·결승 전환)이 사라졌으므로 사회자가 직접 진행한다
     this.state.room.autoStartAt = null;
+    this.state.room.finaleAt = null;
     // 재시작 직후 ANSWERING이었다면 마감 시각을 믿을 수 없으므로 문제 화면으로 내린다.
     if (this.state.room.status === 'ANSWERING') {
       const r = reduce(this.state, { type: 'cancelRound' }, Date.now());
@@ -89,11 +90,11 @@ export class GameService {
         case 'timer:clear':
           this.clearTimer();
           break;
-        case 'autostart:set':
-          this.setAutoStart(e.at, e.index, now);
+        case 'schedule':
+          this.schedule(e, now);
           break;
-        case 'autostart:clear':
-          this.clearAutoStart();
+        case 'unschedule':
+          this.unschedule(e.key);
           break;
         case 'disconnect': {
           const t = setTimeout(() => {
@@ -132,20 +133,25 @@ export class GameService {
     this.timer = null;
   }
 
-  /** 문제 공개 뒤 준비 카운트가 끝나면 타이머를 시작한다. 그 사이 사회자가 시작·취소·다른 문제로 바꾸면 무효 */
-  private setAutoStart(at: number, index: number, now: number): void {
-    this.clearAutoStart();
-    this.autoStartTimer = setTimeout(() => {
-      this.autoStartTimer = null;
-      if (this.state.room.status !== 'QUESTION_SHOWN' || this.state.room.currentIndex !== index) return;
-      const r = this.dispatch({ type: 'startTimer' });
-      if (r.error) this.log.error(`자동 시작 실패: ${r.error}`);
-    }, Math.max(0, at - now));
+  /** 예약 명령(자동 타이머 시작, 결승 발표 전환). 실행 시점에 방이 예약 당시 상태·문제 그대로일 때만 실행한다 */
+  private schedule(e: Extract<Effect, { type: 'schedule' }>, now: number): void {
+    this.unschedule(e.key);
+    const t = setTimeout(() => {
+      this.scheduled.delete(e.key);
+      if (this.state.room.status !== e.onlyIf.status || this.state.room.currentIndex !== e.onlyIf.index) return;
+      const r = this.dispatch(e.command);
+      if (r.error) this.log.error(`예약 명령(${e.key}) 실패: ${r.error}`);
+    }, Math.max(0, e.at - now));
+    this.scheduled.set(e.key, t);
   }
 
-  private clearAutoStart(): void {
-    if (this.autoStartTimer) clearTimeout(this.autoStartTimer);
-    this.autoStartTimer = null;
+  private unschedule(key: ScheduleKey | 'all'): void {
+    for (const [k, t] of this.scheduled) {
+      if (key === 'all' || k === key) {
+        clearTimeout(t);
+        this.scheduled.delete(k);
+      }
+    }
   }
 
   private persist(): void {
@@ -160,7 +166,7 @@ export class GameService {
   /** 종료 시 타이머 정리 */
   dispose(): void {
     this.clearTimer();
-    this.clearAutoStart();
+    this.unschedule('all');
     for (const t of this.pendingDisconnects) clearTimeout(t);
     this.pendingDisconnects.clear();
   }

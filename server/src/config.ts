@@ -31,6 +31,6 @@ export function assertConfig(): void {
   if (isProd && config.hostPin.length < 4) throw new Error('HOST_PIN은 4자 이상이어야 합니다.');
 }
 
-export function joinUrl(roomCode: string): string {
-  return `${config.publicUrl}/join?room=${encodeURIComponent(roomCode)}`;
+export function joinUrl(): string {
+  return `${config.publicUrl}/join`;
 }

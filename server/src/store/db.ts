@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_CONFIG, type AnswerRecord, type Player, type Question, type Room, type RoomState, type RoundResult } from '@ox/shared';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATIONS: Record<number, string> = {
   1: `
@@ -73,6 +73,18 @@ const MIGRATIONS: Record<number, string> = {
       undone INTEGER NOT NULL
     );
   `,
+  // v2: 문제 사진(방 상태와 별도로 보관, 전체 교체 저장에서 지우지 않음) + 결승 규칙 상태
+  2: `
+    CREATE TABLE IF NOT EXISTS images (
+      id TEXT PRIMARY KEY,
+      mime TEXT NOT NULL,
+      bytes BLOB NOT NULL,
+      size INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    ALTER TABLE rooms ADD COLUMN pending_revival INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE rooms ADD COLUMN finale_at INTEGER;
+  `,
 };
 
 type Row = Record<string, unknown>;
@@ -120,9 +132,9 @@ export class Store {
       for (const t of ['rooms', 'players', 'questions', 'answers', 'round_results']) db.exec(`DELETE FROM ${t}`);
       const r = state.room;
       db.prepare(
-        `INSERT INTO rooms (id, code, status, round_mode, current_index, deadline_at, revival_used_count, winner_player_id, config, created_at, updated_at, phones_purged_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(r.id, r.code, r.status, r.roundMode, r.currentIndex, r.deadlineAt, r.revivalUsedCount, r.winnerPlayerId, JSON.stringify(r.config), r.createdAt, r.updatedAt, r.phonesPurgedAt);
+        `INSERT INTO rooms (id, code, status, round_mode, current_index, deadline_at, revival_used_count, winner_player_id, config, created_at, updated_at, phones_purged_at, pending_revival, finale_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(r.id, r.code, r.status, r.roundMode, r.currentIndex, r.deadlineAt, r.revivalUsedCount, r.winnerPlayerId, JSON.stringify(r.config), r.createdAt, r.updatedAt, r.phonesPurgedAt, r.pendingRevival ? 1 : 0, r.finaleAt);
 
       const insPlayer = db.prepare(
         `INSERT INTO players (id, room_id, phone, name, avatar, strikes, status, session_token_hash, connected, joined_at, consent_at, eliminated_at_index, revived_at_index)
@@ -161,6 +173,22 @@ export class Store {
     this.onSaved?.();
   }
 
+  // ---- 문제 사진 ----
+
+  putImage(id: string, mime: string, bytes: Uint8Array, now = Date.now()): void {
+    this.db.prepare('INSERT OR REPLACE INTO images (id, mime, bytes, size, created_at) VALUES (?, ?, ?, ?, ?)').run(id, mime, bytes, bytes.byteLength, now);
+  }
+
+  getImage(id: string): { mime: string; bytes: Uint8Array } | null {
+    const row = this.db.prepare('SELECT mime, bytes FROM images WHERE id = ?').get(id) as Row | undefined;
+    if (!row) return null;
+    return { mime: String(row['mime']), bytes: row['bytes'] as Uint8Array };
+  }
+
+  deleteImage(id: string): void {
+    this.db.prepare('DELETE FROM images WHERE id = ?').run(id);
+  }
+
   /** WAL 내용까지 포함한 일관된 사본을 만든다 */
   copyTo(path: string): void {
     this.db.exec(`VACUUM INTO '${path.replace(/'/g, "''")}'`);
@@ -178,6 +206,8 @@ export class Store {
       currentIndex: Number(roomRow['current_index']),
       deadlineAt: int(roomRow['deadline_at']),
       autoStartAt: null,
+      pendingRevival: bool(roomRow['pending_revival']),
+      finaleAt: null,
       revivalUsedCount: Number(roomRow['revival_used_count']),
       winnerPlayerId: (roomRow['winner_player_id'] as string | null) ?? null,
       // 예전 저장분에 새 설정 항목이 없으면 기본값으로 채운다

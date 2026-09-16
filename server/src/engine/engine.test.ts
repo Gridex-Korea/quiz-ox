@@ -283,30 +283,97 @@ describe('타이머 자동 시작', () => {
     const { s } = setup(1);
     const shown = run(s, { type: 'showQuestion' });
     expect(shown.state.room.autoStartAt).toBe(T0 + 3000);
-    const set = shown.effects.find((e) => e.type === 'autostart:set');
-    expect(set).toEqual({ type: 'autostart:set', at: T0 + 3000, index: 0 });
+    const set = shown.effects.find((e) => e.type === 'schedule' && e.key === 'autostart');
+    expect(set).toMatchObject({ type: 'schedule', key: 'autostart', at: T0 + 3000, command: { type: 'startTimer' }, onlyIf: { status: 'QUESTION_SHOWN', index: 0 } });
     expect((broadcasts(shown.effects, S2C.questionShow)[0]!.payload as { autoStartAt: number }).autoStartAt).toBe(T0 + 3000);
     expect(screenView(shown.state, T0, 'u').autoStartAt).toBe(T0 + 3000);
 
     const started = run(shown.state, { type: 'startTimer' }, T0 + 1000);
     expect(started.state.room.autoStartAt).toBeNull();
-    expect(started.effects.some((e) => e.type === 'autostart:clear')).toBe(true);
+    expect(started.effects.some((e) => e.type === 'unschedule' && e.key === 'autostart')).toBe(true);
     expect(screenView(started.state, T0, 'u').autoStartAt).toBeNull();
 
     const cancelled = run(started.state, { type: 'cancelRound' }, T0 + 2000);
     expect(cancelled.state.room.autoStartAt).toBeNull();
-    expect(cancelled.effects.some((e) => e.type === 'autostart:clear')).toBe(true);
+    expect(cancelled.effects.some((e) => e.type === 'unschedule' && (e.key === 'all' || e.key === 'autostart'))).toBe(true);
   });
 
   it('자동 시작을 끄면 예약하지 않고, 준비 카운트 0이면 공개 시각에 바로 예약한다', () => {
     const manual = run(setup(1).s, { type: 'updateConfig', patch: { autoStart: false } }).state;
     const shownManual = run(manual, { type: 'showQuestion' });
     expect(shownManual.state.room.autoStartAt).toBeNull();
-    expect(shownManual.effects.some((e) => e.type === 'autostart:set')).toBe(false);
+    expect(shownManual.effects.some((e) => e.type === 'schedule' && e.key === 'autostart')).toBe(false);
 
     const instant = run(setup(1).s, { type: 'updateConfig', patch: { autoStartDelaySec: 0 } }).state;
     const shownInstant = run(instant, { type: 'showQuestion' });
     expect(shownInstant.state.room.autoStartAt).toBe(T0);
+  });
+});
+
+describe('결승 규칙 (생존자가 결승 인원 이하)', () => {
+  it('부활전을 아직 안 열었고 대기실이 있으면 부활전을 먼저 요구하고, 부활전 뒤에는 6초 뒤 결승 발표를 예약한다', () => {
+    const { s, ids } = setup(5);
+    // Q0 정답 O: 3명 오답 → 생존 2, 대기실 3
+    const r1 = playRound(s, ids, ['O', 'O', 'X', 'X', 'X']);
+    expect(r1.s.room.pendingRevival).toBe(true);
+    expect(r1.s.room.finaleAt).toBeNull();
+    expect(r1.effects.some((e) => e.type === 'schedule' && e.key === 'finale')).toBe(false);
+    expect(shouldSuggestRevival(r1.s)).toBe(true);
+    expect(screenView(r1.s, T0, 'u').pendingRevival).toBe(true);
+
+    // 부활전: 대기실 3명 중 1명만 정답 → 생존 3, 탈락 2 → 결승 예약
+    let r = run(r1.s, { type: 'startRevival' });
+    expect(r.state.room.pendingRevival).toBe(false);
+    r = run(r.state, { type: 'startTimer' }, T0);
+    r = run(r.state, { type: 'choose', playerId: ids[2]!, index: 6, choice: 'O' }, T0 + 1000);
+    r = run(r.state, { type: 'timeUp' }, T0 + 16_000);
+    r = run(r.state, { type: 'reveal' }, T0 + 17_000);
+    expect(r.state.room.finaleAt).toBe(T0 + 23_000);
+    const sched = r.effects.find((e) => e.type === 'schedule' && e.key === 'finale');
+    expect(sched).toMatchObject({ at: T0 + 23_000, command: { type: 'end' }, onlyIf: { status: 'REVEALED', index: 6 } });
+    expect(screenView(r.state, T0, 'u').finaleAt).toBe(T0 + 23_000);
+
+    // 종료되면 결승 진출자 3명과 뒷번호 4자리(사회자 결정으로 스크린에만)
+    const ended = run(r.state, { type: 'end' }, T0 + 23_000);
+    const view = screenView(ended.state, T0, 'u');
+    expect(view.finalists!.map((f) => f.name)).toEqual(['P0', 'P1', 'P2']);
+    expect(view.finalists!.map((f) => f.phoneTail)).toEqual(['0000', '0001', '0002']);
+    expect(playerView(ended.state, ids[0]!, T0)!.isFinalist).toBe(true);
+    expect(playerView(ended.state, ids[3]!, T0)!.isFinalist).toBe(false);
+    // 결승 이외의 화면·이벤트에는 전화번호가 없다
+    expect(JSON.stringify(screenView(r.state, T0, 'u'))).not.toContain('0101111');
+  });
+
+  it('대기실이 비었으면 부활전 없이 바로 결승 발표를 예약하고, 인원을 넘으면 finalists는 null', () => {
+    const three = setup(3);
+    const all = playRound(three.s, three.ids, ['O', 'O', 'O']); // 생존 3, 대기실 0
+    expect(all.s.room.pendingRevival).toBe(false);
+    expect(all.s.room.finaleAt).toBe(T0 + 23_000);
+    const ended = run(all.s, { type: 'end' }, T0 + 23_000);
+    expect(screenView(ended.state, T0, 'u').finalists).toHaveLength(3);
+
+    const four = setup(4);
+    const many = playRound(four.s, four.ids, ['O', 'O', 'O', 'O']); // 생존 4 > 3
+    expect(many.s.room.finaleAt).toBeNull();
+    const endedMany = run(many.s, { type: 'end' });
+    expect(screenView(endedMany.state, T0, 'u').finalists).toBeNull();
+  });
+
+  it('결승 인원을 0으로 두면 규칙이 꺼진다', () => {
+    const { s, ids } = setup(2);
+    const off = run(s, { type: 'updateConfig', patch: { finalistThreshold: 0 } }).state;
+    const r = playRound(off, ids, ['O', 'O']);
+    expect(r.s.room.finaleAt).toBeNull();
+    expect(r.s.room.pendingRevival).toBe(false);
+  });
+
+  it('판정 취소는 결승 예약과 부활전 대기를 모두 푼다', () => {
+    const { s, ids } = setup(3);
+    const r = playRound(s, ids, ['O', 'O', 'O']);
+    expect(r.s.room.finaleAt).not.toBeNull();
+    const undone = run(r.s, { type: 'undoReveal' });
+    expect(undone.state.room.finaleAt).toBeNull();
+    expect(undone.effects.some((e) => e.type === 'unschedule' && e.key === 'finale')).toBe(true);
   });
 });
 

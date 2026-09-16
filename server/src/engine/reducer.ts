@@ -21,12 +21,14 @@ import {
   type QuestionPublic,
   type RoomConfig,
   type RoomState,
+  type RoomStatus,
   type RoundMode,
   type RoundResult,
 } from '@ox/shared';
 import { cloneState, createRoom, newId, snapshotPlayers } from './state';
 
 export type Target = 'all' | 'players' | 'screen' | 'host' | 'screenHost';
+export type ScheduleKey = 'autostart' | 'finale';
 
 export type Effect =
   | { type: 'broadcast'; to: Target; event: string; payload: unknown }
@@ -34,9 +36,9 @@ export type Effect =
   | { type: 'toEachPlayer'; event: string; payloadFor: (playerId: string) => unknown }
   | { type: 'timer:set'; deadline: number }
   | { type: 'timer:clear' }
-  /** 문제 공개 뒤 자동 타이머 시작 예약(해당 문제가 여전히 QUESTION_SHOWN일 때만 실행) */
-  | { type: 'autostart:set'; at: number; index: number }
-  | { type: 'autostart:clear' }
+  /** 예약 명령: at 시각에 방이 여전히 onlyIf 상태·문제이면 command를 실행(자동 타이머 시작, 결승 발표 전환) */
+  | { type: 'schedule'; key: ScheduleKey; at: number; command: Command; onlyIf: { status: RoomStatus; index: number } }
+  | { type: 'unschedule'; key: ScheduleKey | 'all' }
   | { type: 'disconnect'; playerId: string; delayMs: number }
   | { type: 'alert'; level: 'info' | 'warning' | 'error'; message: string }
   | { type: 'stateChanged' };
@@ -210,7 +212,7 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       state.currentAnswers = {};
       touch(state, now);
       return ok(state, [
-        { type: 'autostart:clear' },
+        { type: 'unschedule', key: 'autostart' },
         { type: 'timer:set', deadline },
         { type: 'broadcast', to: 'all', event: S2C.questionStart, payload: { index: q.orderNo, deadline, serverNow: now } },
         { type: 'stateChanged' },
@@ -243,12 +245,13 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       state.room.status = 'QUESTION_SHOWN';
       state.room.deadlineAt = null;
       state.room.autoStartAt = null; // 사고 대응 중이므로 자동 시작하지 않는다. 사회자가 다시 시작
+      state.room.finaleAt = null;
       state.currentAnswers = {};
       if (q) delete state.answers[q.id];
       touch(state, now);
       return ok(state, [
         { type: 'timer:clear' },
-        { type: 'autostart:clear' },
+        { type: 'unschedule', key: 'all' },
         { type: 'broadcast', to: 'all', event: S2C.roundCancelled, payload: { index: state.room.currentIndex } },
         { type: 'stateChanged' },
       ]);
@@ -328,7 +331,7 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       const inGame = !['LOBBY', 'LOCKED'].includes(state.room.status);
       const patch = { ...cmd.patch };
       if (inGame) {
-        const allowedInGame: (keyof RoomConfig)[] = ['revivalAfterOrderNo', 'liveMovesUntilOrderNo', 'autoStart', 'autoStartDelaySec'];
+        const allowedInGame: (keyof RoomConfig)[] = ['revivalAfterOrderNo', 'liveMovesUntilOrderNo', 'autoStart', 'autoStartDelaySec', 'finalistThreshold'];
         for (const key of Object.keys(patch) as (keyof RoomConfig)[]) {
           if (!allowedInGame.includes(key)) return fail(prev, 'config_locked');
         }
@@ -392,7 +395,7 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       };
       return ok(fresh, [
         { type: 'timer:clear' },
-        { type: 'autostart:clear' },
+        { type: 'unschedule', key: 'all' },
         { type: 'broadcast', to: 'all', event: S2C.roomReset, payload: { roomCode: fresh.room.code } },
         { type: 'stateChanged' },
       ]);
@@ -509,6 +512,8 @@ function showQuestion(state: RoomState, prev: RoomState, index: number | undefin
   state.room.roundMode = resolvedMode;
   state.room.currentIndex = q.orderNo;
   state.room.deadlineAt = null;
+  state.room.finaleAt = null;
+  if (resolvedMode === 'REVIVAL') state.room.pendingRevival = false;
   state.currentAnswers = {};
   q.usedAt = q.usedAt ?? now;
   // 문제 공개와 함께 준비 카운트 뒤 타이머 자동 시작(설정). 사회자는 "지금 시작"으로 건너뛸 수 있다
@@ -525,9 +530,13 @@ function showQuestion(state: RoomState, prev: RoomState, index: number | undefin
     question: questionPublic(state, q, false),
     autoStartAt,
   };
-  const scheduling: Effect[] = autoStartAt !== null ? [{ type: 'autostart:set', at: autoStartAt, index: q.orderNo }] : [{ type: 'autostart:clear' }];
+  const scheduling: Effect[] =
+    autoStartAt !== null
+      ? [{ type: 'schedule', key: 'autostart', at: autoStartAt, command: { type: 'startTimer' }, onlyIf: { status: 'QUESTION_SHOWN', index: q.orderNo } }]
+      : [{ type: 'unschedule', key: 'autostart' }];
   return ok(state, [
     { type: 'timer:clear' },
+    { type: 'unschedule', key: 'finale' },
     ...scheduling,
     { type: 'broadcast', to: 'players', event: S2C.questionShow, payload: base },
     { type: 'broadcast', to: 'screen', event: S2C.questionShow, payload: base },
@@ -695,6 +704,10 @@ function reveal(state: RoomState, prev: RoomState, now: number): Result {
     });
     effects.push({ type: 'disconnect', playerId: id, delayMs: 3000 });
   }
+  // 결승 규칙: 생존자가 결승 인원 이하가 되면 (1) 부활전을 아직 안 열었고 대기실이 있으면 부활전을 먼저, (2) 아니면 잠시 뒤 결승 진출자 발표
+  const threshold = state.room.config.finalistThreshold;
+  state.room.pendingRevival = false;
+  state.room.finaleAt = null;
   if (by.ACTIVE === 0) {
     effects.push({
       type: 'alert',
@@ -704,8 +717,20 @@ function reveal(state: RoomState, prev: RoomState, now: number): Result {
           ? `무대 생존자가 0명입니다. 대기실 ${by.WAITING}명으로 패자부활전을 열어 이어가거나, 판정을 취소할 수 있습니다.`
           : '무대 생존자가 0명이고 대기실도 비었습니다. 판정 취소 또는 게임 종료를 선택해 주세요.',
     });
-  } else if (by.ACTIVE === 1) {
-    effects.push({ type: 'alert', level: 'info', message: '무대 생존자가 1명입니다. 게임 종료를 누르면 우승 연출이 나옵니다.' });
+  } else if (threshold > 0 && by.ACTIVE <= threshold) {
+    if (state.room.revivalUsedCount === 0 && by.WAITING > 0) {
+      state.room.pendingRevival = true;
+      effects.push({
+        type: 'alert',
+        level: 'info',
+        message: `무대 생존자 ${by.ACTIVE}명. 아직 패자부활전을 열지 않았으니 먼저 패자부활전을 진행합니다. 준비되면 "패자부활전 시작"을 눌러 주세요.`,
+      });
+    } else {
+      const finaleAt = now + 6000;
+      state.room.finaleAt = finaleAt;
+      effects.push({ type: 'schedule', key: 'finale', at: finaleAt, command: { type: 'end' }, onlyIf: { status: 'REVEALED', index: q.orderNo } });
+      effects.push({ type: 'alert', level: 'info', message: `무대 생존자 ${by.ACTIVE}명. 6초 뒤 결승 진출자 축하 화면으로 넘어갑니다. 무대로 불러 현장 결승을 진행해 주세요.` });
+    }
   }
   effects.push({ type: 'stateChanged' });
   return ok(state, effects);
@@ -729,8 +754,11 @@ function undoReveal(state: RoomState, prev: RoomState, now: number): Result {
   const recs = state.answers[q.id];
   if (recs) for (const r of Object.values(recs)) r.isCorrect = null;
   state.room.status = 'TIME_UP';
+  state.room.pendingRevival = false;
+  state.room.finaleAt = null;
   touch(state, now);
   return ok(state, [
+    { type: 'unschedule', key: 'finale' },
     { type: 'broadcast', to: 'all', event: S2C.roundUndone, payload: { index: q.orderNo } },
     { type: 'alert', level: 'info', message: '직전 판정을 취소했습니다. 정답을 확인한 뒤 다시 공개해 주세요.' },
     { type: 'stateChanged' },
@@ -741,6 +769,8 @@ function endGame(state: RoomState, now: number): Result {
   state.room.status = 'ENDED';
   state.room.deadlineAt = null;
   state.room.autoStartAt = null;
+  state.room.pendingRevival = false;
+  state.room.finaleAt = null;
   touch(state, now);
   const survivors = Object.values(state.players)
     .filter((p) => p.status === 'ACTIVE')
@@ -748,7 +778,7 @@ function endGame(state: RoomState, now: number): Result {
   const totalQuestions = state.questions.filter((q) => q.usedAt !== null).length;
   return ok(state, [
     { type: 'timer:clear' },
-    { type: 'autostart:clear' },
+    { type: 'unschedule', key: 'all' },
     { type: 'broadcast', to: 'all', event: S2C.gameEnded, payload: { survivors, totalQuestions } },
     { type: 'stateChanged' },
   ]);

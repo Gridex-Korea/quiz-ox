@@ -3,6 +3,7 @@ import {
   currentQuestion,
   eligibleStatus,
   isLiveMoves,
+  type Finalist,
   type Outcome,
   type PublicPlayer,
   type RoomState,
@@ -10,6 +11,15 @@ import {
   type RoomStateForPlayer,
   type RoomStateForScreen,
 } from '@ox/shared';
+
+/** ENDED이고 생존자가 결승 인원 이하일 때만 결승 진출자(뒷번호 4자리 포함). 그 외에는 null */
+export function finalistsOf(state: RoomState): Finalist[] | null {
+  if (state.room.status !== 'ENDED') return null;
+  const alive = Object.values(state.players).filter((p) => p.status === 'ACTIVE');
+  const threshold = state.room.config.finalistThreshold;
+  if (threshold <= 0 || alive.length === 0 || alive.length > threshold) return null;
+  return alive.map((p) => ({ ...publicPlayerBase(p), phoneTail: p.phone ? p.phone.slice(-4) : null }));
+}
 import { publicPlayerBase, questionPublic } from './reducer';
 
 function currentOutcomes(state: RoomState): Outcome[] | null {
@@ -71,6 +81,9 @@ export function screenView(state: RoomState, now: number, joinUrl: string): Room
     question: q && state.room.status !== 'LOBBY' && state.room.status !== 'LOCKED' ? questionPublic(state, q, revealed) : null,
     deadline: state.room.deadlineAt,
     autoStartAt: state.room.status === 'QUESTION_SHOWN' ? state.room.autoStartAt : null,
+    pendingRevival: state.room.pendingRevival,
+    finaleAt: state.room.status === 'REVEALED' ? state.room.finaleAt : null,
+    finalists: finalistsOf(state),
     counts: currentCounts(state),
     answer: revealed && q ? q.answer : null,
     outcomes: currentOutcomes(state),
@@ -124,6 +137,9 @@ export function playerView(state: RoomState, playerId: string, now: number): Roo
     question: q && status !== 'LOBBY' && status !== 'LOCKED' ? questionPublic(state, q, status === 'REVEALED') : null,
     deadline: state.room.deadlineAt,
     autoStartAt: status === 'QUESTION_SHOWN' ? state.room.autoStartAt : null,
+    pendingRevival: state.room.pendingRevival,
+    finaleAt: status === 'REVEALED' ? state.room.finaleAt : null,
+    isFinalist: (finalistsOf(state) ?? []).some((f) => f.id === playerId),
     playerCount: Object.keys(state.players).length,
     counts: currentCounts(state),
     answer: status === 'REVEALED' && q ? q.answer : null,

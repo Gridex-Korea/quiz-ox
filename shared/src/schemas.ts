@@ -61,8 +61,12 @@ export const updateConfigSchema = z
     answerRateLimitMs: z.number().int().min(0).max(3000),
     autoStart: z.boolean(),
     autoStartDelaySec: z.number().int().min(0).max(30),
+    finalistThreshold: z.number().int().min(0).max(20),
   })
   .partial();
+
+export const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
+export const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 
 export const questionInputSchema = z.object({
   id: z.string().min(1).max(64).optional(),

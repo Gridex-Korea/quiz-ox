@@ -7,7 +7,7 @@ import { Avatar } from '../shared/Avatar';
 import { isSoundEnabled, play, unlockSound } from '../shared/sounds';
 import { loadJson, queryParam, saveJson } from '../shared/storage';
 import { useCountdown, useRoom } from '../shared/socket';
-import { STAGE_H, STAGE_W, SlotAllocator, ZONES, hash, positionsFor, zoneOf, type RevealPhase, type Slot, type ZoneKey } from './layout';
+import { QUESTION_IMAGE_RECT, STAGE_H, STAGE_W, SlotAllocator, ZONES, hash, positionsFor, zoneOf, zoneRects, type RevealPhase, type Slot, type ZoneKey, type ZoneName } from './layout';
 import './screen.css';
 
 const KEY_STORAGE = 'ox.screenKey';
@@ -164,6 +164,15 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
         setTimeout(() => burst(0.3, 120), 400);
         setTimeout(() => burst(0.7, 120), 800);
       }),
+      room.on(S2C.gameEnded, (p) => {
+        // 결승 진출자 축하 화면이면 팡파르 + 색종이
+        const survivors = (p as { survivors: unknown[] }).survivors;
+        if (survivors.length > 0 && survivors.length <= 3) {
+          play('fanfare');
+          burst(0.25, 160);
+          setTimeout(() => burst(0.75, 160), 350);
+        }
+      }),
       room.on(S2C.roundUndone, () => {
         setPhase('none');
         setLeaving([]);
@@ -179,27 +188,28 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   }, [view.status]);
 
   // ---- 배치 계산 ----
+  const inRoundNow = ['QUESTION_SHOWN', 'ANSWERING', 'TIME_UP', 'REVEALED'].includes(view.status);
+  const questionImage = inRoundNow ? view.question?.imageUrl ?? null : null;
   const { slots, dims } = useMemo(() => {
     const byZone = new Map<ZoneKey, string[]>();
-    const playerZone = new Map<string, ZoneKey>();
     for (const p of view.players) {
       const z = zoneOf(p, view, phase);
-      playerZone.set(p.id, z);
       if (z === 'hidden') continue;
       const arr = byZone.get(z) ?? [];
       arr.push(p.id);
       byZone.set(z, arr);
     }
+    const rects = zoneRects(!!questionImage);
     const slots = new Map<string, Slot>();
-    for (const zone of Object.keys(ZONES) as (keyof typeof ZONES)[]) {
+    for (const zone of Object.keys(ZONES) as ZoneName[]) {
       const members = byZone.get(zone) ?? [];
       const seats = allocRef.current.assign(zone, members);
-      for (const [id, s] of positionsFor(zone, seats, zone === 'strip')) slots.set(id, s);
+      for (const [id, s] of positionsFor(zone, seats, zone === 'strip', rects[zone])) slots.set(id, s);
     }
     const dims = new Set<string>();
     if (view.status === 'REVEALED' && view.outcomes) for (const o of view.outcomes) if (!o.correct) dims.add(o.playerId);
     return { slots, dims };
-  }, [view, phase]);
+  }, [view, phase, questionImage]);
 
   useEffect(() => {
     for (const [id, s] of slots) lastSlots.current.set(id, s);
@@ -246,7 +256,20 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
         <div className="s-banner revival">🔥 패자부활전 · 대기실 {stageCounts.waiting}명 도전 · 맞히면 무대 복귀, 틀리면 탈락</div>
       )}
       {inRound && !isRevival && !view.liveMoves && view.status !== 'REVEALED' && <div className="s-banner hidden-mode">🙈 이번 문제부터 선택은 마감 후 공개됩니다</div>}
-      {view.status === 'REVEALED' && view.question?.explanation && <div className="s-banner explain">{view.question.explanation}</div>}
+      {view.status === 'REVEALED' && view.pendingRevival && (
+        <div className="s-banner revival">🔥 무대 생존자 {stageCounts.active}명! 잠시 후 패자부활전이 시작됩니다</div>
+      )}
+      {view.status === 'REVEALED' && view.finaleAt && !view.pendingRevival && (
+        <div className="s-banner finale">🎉 결승 진출자 확정! 잠시 후 발표합니다</div>
+      )}
+      {view.status === 'REVEALED' && view.question?.explanation && !view.pendingRevival && !view.finaleAt && <div className="s-banner explain">{view.question.explanation}</div>}
+
+      {/* 사진 문제 */}
+      {questionImage && (
+        <div className="qimage-frame" style={rectStyle(QUESTION_IMAGE_RECT)}>
+          <img className="qimage" src={questionImage} alt="" />
+        </div>
+      )}
 
       {/* 구역 */}
       {showZones && (
@@ -381,6 +404,24 @@ function LobbyPanel({ view }: { view: RoomStateForScreen }) {
 
 function EndedPanel({ view, winner }: { view: RoomStateForScreen; winner?: PublicPlayer }) {
   const survivors = view.players.filter((p) => p.status === 'ACTIVE');
+  if (view.finalists) {
+    return (
+      <div className="finale-panel">
+        <div className="finale-title">🎉 축하합니다!</div>
+        <div className="finale-sub">현장 결승 진출 {view.finalists.length}명 · 무대로 나와 주세요</div>
+        <div className="finale-cards">
+          {view.finalists.map((f) => (
+            <div key={f.id} className={`finale-card ${winner?.id === f.id ? 'winner' : ''}`}>
+              {winner?.id === f.id && <div className="finale-crown">👑 우승</div>}
+              <Avatar spec={f.avatar} size={150} />
+              <div className="finale-name">{f.name}</div>
+              <div className="finale-phone">{f.phoneTail ? `뒷번호 ${f.phoneTail}` : '번호 없음'}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ended">
       {winner ? (
