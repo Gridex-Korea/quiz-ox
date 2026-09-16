@@ -63,7 +63,19 @@ class Bot {
     this.skill = Math.min(0.95, Math.max(0.35, baseSkill + rand(-0.2, 0.2)));
   }
 
+  private joining = false;
+
   async join(): Promise<boolean> {
+    if (this.joining) return false;
+    this.joining = true;
+    try {
+      return await this.doJoin();
+    } finally {
+      this.joining = false;
+    }
+  }
+
+  private async doJoin(): Promise<boolean> {
     const res = await fetch(`${this.base}/api/join`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -209,6 +221,12 @@ async function main() {
       }
     },
   );
+  // 입장에 실패했거나(탈락 등) 퇴장한 봇은 소켓이 없어 초기화 신호를 못 받으므로, 사회자 채널에서 초기화를 감지해 다시 들여보낸다
+  host.on('room:reset', () => {
+    leaving = false;
+    seenNormal.clear();
+    for (const b of bots) if (!b.socket?.connected) setTimeout(() => void b.join(), rand(800, 4000));
+  });
   await new Promise<void>((r, j) => {
     host.once('connect', () => r());
     host.once('connect_error', j);
