@@ -56,6 +56,7 @@ export function JoinApp() {
       }),
       room.on(S2C.sessionReplaced, () => setNotice('다른 기기에서 같은 번호로 접속해 이 화면의 연결이 끊어졌습니다.')),
       room.on(S2C.roomReset, () => clearSession('사회자가 게임을 초기화했습니다. 다시 입장해 주세요.')),
+      room.on(S2C.playerRemoved, () => clearSession('사회자가 참가를 취소했습니다.')),
       room.on(S2C.answerAck, () => navigator.vibrate?.(20)),
     ];
     return () => offs.forEach((off) => off());

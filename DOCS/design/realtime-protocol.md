@@ -100,6 +100,7 @@ type RoomStateForHost = RoomStateForScreen & { questions: Question[]; currentInd
 | `host:end` | 사회자 | — | 강제 종료 |
 | `host:setWinner` | 사회자 | `{ playerId }` | `ENDED`에서만, 생존자 중 한 명 → `game:winner`. 다시 보내면 교체 |
 | `host:restore` / `host:kick` | 사회자 | `{ playerId }` | 참가자 수동 개입 |
+| `host:removePlayer` | 사회자 | `{ playerId }` | 참가자를 방에서 **완전히 삭제**(집계·명단·CSV에서 사라짐). 리허설 계정 정리, 행사용 아바타 봇 퇴장에 사용. 해당 폰에는 `player:removed` 후 연결 종료 |
 | `host:updateConfig` | 사회자 | `Partial<RoomConfig>` | `LOBBY`/`LOCKED`에서만 허용. 단 `revivalAfterOrderNo`·`liveMovesUntilOrderNo`는 게임 중에도 변경 가능 |
 | `host:questions:replace` / `host:question:upsert` / `host:question:delete` | 사회자 | 문제 목록 / 문제 1개 / `{ id }` | 문제 편집. 출제한 문제는 삭제·순서 변경 불가 |
 | `host:resetRoom` | 사회자 | `{ confirm: true, keepQuestions }` | 새 방 코드로 초기화. 참가자·기록 삭제, 문제는 선택 유지. 참가자 소켓에 `room:reset` 후 종료 |

@@ -69,6 +69,7 @@ export type Command =
   | { type: 'setWinner'; playerId: string }
   | { type: 'restore'; playerId: string }
   | { type: 'kick'; playerId: string }
+  | { type: 'removePlayer'; playerId: string }
   | { type: 'updateConfig'; patch: Partial<RoomConfig> }
   | { type: 'questionsReplace'; questions: QuestionInput[] }
   | { type: 'questionUpsert'; question: QuestionInput }
@@ -299,6 +300,20 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
           payload: { atQuestion: state.room.currentIndex, message: '사회자에 의해 퇴장 처리되었습니다.' },
         },
         { type: 'disconnect', playerId: p.id, delayMs: 1500 },
+        { type: 'stateChanged' },
+      ]);
+    }
+    case 'removePlayer': {
+      // 탈락과 달리 방에서 완전히 지운다(집계·명단·CSV에서 사라짐). 리허설 계정·행사용 봇 정리용
+      const p = state.players[cmd.playerId];
+      if (!p) return fail(prev, 'unknown_player');
+      delete state.players[p.id];
+      delete state.currentAnswers[p.id];
+      if (state.room.winnerPlayerId === p.id) state.room.winnerPlayerId = null;
+      touch(state, now);
+      return ok(state, [
+        { type: 'toPlayer', playerId: p.id, event: S2C.playerRemoved, payload: { message: '사회자가 참가를 취소했습니다.' } },
+        { type: 'disconnect', playerId: p.id, delayMs: 500 },
         { type: 'stateChanged' },
       ]);
     }

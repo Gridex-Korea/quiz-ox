@@ -1,6 +1,8 @@
-// 리허설용 가상 참가자 봇. 사회자가 혼자 콘솔을 눌러 보며 연습할 수 있게, 실제 사람처럼 입장하고 답한다.
-//   npm run bots -- --count 6 --url http://localhost:3000 --pin 1234 --skill 0.7 --minutes 90
-// 봇은 사회자 명령을 내리지 않는다. 정답을 알기 위해서만 사회자 토큰으로 문제 목록을 읽는다(정답률 = skill).
+// 가상 참가자 봇(아바타). 리허설 연습용이자, 행사에서 초반 무대를 채우는 NPC용.
+//   npm run bots -- --count 10 --until 5 --url http://localhost:3000 --pin 1234 --skill 0.7 --minutes 120
+// - 실제 사람처럼 입장하고, 실력(정답률)대로 시간을 끌며 답하고, 가끔 마음을 바꾼다.
+// - --until N: N번 문제 정답 공개까지만 함께 뛰고, 그 뒤 명단에서 조용히 사라진다(탈락으로 집계되지 않음). 0이면 끝까지.
+// - 봇은 진행 명령을 내리지 않는다. 정답을 알기 위해서만 사회자 토큰으로 문제 목록을 읽는다.
 import { io, type Socket } from 'socket.io-client';
 
 interface Args {
@@ -9,6 +11,7 @@ interface Args {
   pin: string;
   skill: number;
   minutes: number;
+  until: number;
 }
 
 function parseArgs(): Args {
@@ -18,11 +21,12 @@ function parseArgs(): Args {
     return i >= 0 ? (a[i + 1] ?? d) : d;
   };
   return {
-    count: Number(get('count', '6')),
+    count: Number(get('count', '10')),
     url: get('url', 'http://localhost:3000'),
     pin: get('pin', '1234'),
     skill: Number(get('skill', '0.7')),
-    minutes: Number(get('minutes', '90')),
+    minutes: Number(get('minutes', '120')),
+    until: Number(get('until', '5')),
   };
 }
 
@@ -38,15 +42,13 @@ interface PlayerView {
   question: { index: number } | null;
   deadline: number | null;
   me: { status: string; strikes: number };
-  answer: string | null;
-  myOutcome: { correct: boolean; statusAfter: string; revived: boolean } | null;
 }
 
 class Bot {
   socket: Socket | null = null;
   playerId = '';
   answered = new Set<number>();
-  eliminated = false;
+  gone = false;
   skill: number;
 
   constructor(
@@ -55,6 +57,8 @@ class Bot {
     baseSkill: number,
     private answers: () => Map<number, 'O' | 'X'>,
     private base: string,
+    /** 이 orderNo까지만 답한다(-1이면 제한 없음) */
+    private lastIndex: number,
   ) {
     this.skill = Math.min(0.95, Math.max(0.35, baseSkill + rand(-0.2, 0.2)));
   }
@@ -73,7 +77,7 @@ class Bot {
     const j = (await res.json()) as { playerId: string; sessionToken: string; rejoined: boolean };
     this.playerId = j.playerId;
     this.answered.clear();
-    this.eliminated = false;
+    this.gone = false;
     this.connect(j.sessionToken);
     log(`${this.name} ${j.rejoined ? '자리 복귀' : '입장'} (실력 ${Math.round(this.skill * 100)}%)`);
     return true;
@@ -84,21 +88,24 @@ class Bot {
     const s = io(this.base, { auth: { role: 'player', token }, transports: ['websocket'], reconnectionDelay: 500 });
     this.socket = s;
     s.on('room:state', (v: PlayerView) => this.onState(v));
-    s.on('question:reveal', (p: { answer: string; me: PlayerView['myOutcome'] }) => {
+    s.on('question:reveal', (p: { me: { correct: boolean; statusAfter: string; revived: boolean } | null }) => {
       if (!p.me) return;
       if (p.me.correct) log(`  ${this.name}: 정답! ${p.me.revived ? '무대로 복귀 🎉' : '생존'}`);
       else log(`  ${this.name}: 오답… ${p.me.statusAfter === 'ELIMINATED' ? '탈락 😢' : '대기실로'}`);
     });
     s.on('player:eliminated', () => {
-      this.eliminated = true;
+      this.gone = true;
+    });
+    s.on('player:removed', () => {
+      this.gone = true;
     });
     s.on('room:reset', () => {
       log(`${this.name}: 방이 초기화됨 → 다시 입장`);
       setTimeout(() => void this.join(), rand(800, 3000));
     });
     s.on('connect_error', (e: Error) => {
-      if (e.message === 'eliminated') {
-        this.eliminated = true;
+      if (e.message === 'eliminated' || e.message === 'invalid_token') {
+        this.gone = true;
         s.disconnect();
       }
     });
@@ -107,6 +114,7 @@ class Bot {
   private onState(v: PlayerView) {
     if (v.status !== 'ANSWERING' || !v.canAnswer || !v.question || !v.deadline) return;
     const idx = v.question.index;
+    if (this.lastIndex >= 0 && idx > this.lastIndex) return;
     if (this.answered.has(idx)) return;
     this.answered.add(idx);
     const remaining = v.deadline - Date.now();
@@ -141,38 +149,70 @@ class Bot {
 
 async function main() {
   const args = parseArgs();
+  const lastIndex = args.until > 0 ? args.until - 1 : -1;
   const login = await fetch(`${args.url}/api/host/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pin: args.pin }) });
   if (!login.ok) throw new Error(`사회자 로그인 실패(${login.status}) — 정답을 읽기 위해 PIN이 필요합니다`);
   const { token } = (await login.json()) as { token: string };
 
-  // 정답표: 사회자 뷰에서만 읽는다(봇은 명령을 보내지 않는다)
   const answers = new Map<number, 'O' | 'X'>();
   const host = io(args.url, { auth: { role: 'host', token }, transports: ['websocket'] });
-  host.on('room:state', (v: { status: string; questions: { orderNo: number; answer: 'O' | 'X' }[]; players: { name: string; status: string }[]; winnerId: string | null }) => {
-    answers.clear();
-    for (const q of v.questions) answers.set(q.orderNo, q.answer);
-    if (v.status !== lastStatus) {
-      lastStatus = v.status;
-      const alive = v.players.filter((p) => p.status === 'ACTIVE').length;
-      const waiting = v.players.filter((p) => p.status === 'WAITING').length;
-      const out = v.players.filter((p) => p.status === 'ELIMINATED').length;
-      log(`방 상태 ${v.status} · 생존 ${alive} · 대기실 ${waiting} · 탈락 ${out}`);
-      if (v.status === 'ENDED') log('게임 종료. 사회자가 우승자를 지정하면 왕관이 뜹니다. 게임 초기화를 하면 봇들이 다시 입장합니다.');
-    }
-  });
   let lastStatus = '';
+  let leaving = false;
+  const bots: Bot[] = [];
+
+  const leaveAll = async (reason: string) => {
+    if (leaving) return;
+    leaving = true;
+    log(`${reason} → 아바타 ${bots.length}명이 조용히 퇴장합니다`);
+    await sleep(3000); // 정답 공개 연출이 끝난 뒤
+    for (const b of bots) {
+      if (!b.playerId || b.gone) continue;
+      host.emit('host:removePlayer', { playerId: b.playerId });
+      b.gone = true;
+      await sleep(rand(150, 350));
+    }
+    log('아바타 퇴장 완료. 이후 실제 참가자만 남습니다. (게임 초기화 시 다시 입장)');
+  };
+
+  host.on(
+    'room:state',
+    (v: {
+      status: string;
+      mode: string | null;
+      currentIndex: number;
+      questions: { orderNo: number; answer: 'O' | 'X' }[];
+      players: { name: string; status: string }[];
+    }) => {
+      answers.clear();
+      for (const q of v.questions) answers.set(q.orderNo, q.answer);
+      if (v.status !== lastStatus) {
+        lastStatus = v.status;
+        const alive = v.players.filter((p) => p.status === 'ACTIVE').length;
+        const waiting = v.players.filter((p) => p.status === 'WAITING').length;
+        const out = v.players.filter((p) => p.status === 'ELIMINATED').length;
+        log(`방 상태 ${v.status} · 생존 ${alive} · 대기실 ${waiting} · 탈락 ${out}`);
+        if (v.status === 'LOBBY') leaving = false;
+        if (v.status === 'ENDED') log('게임 종료. 게임 초기화를 하면 아바타들이 다시 입장합니다.');
+      }
+      if (lastIndex >= 0 && v.status === 'REVEALED' && v.mode === 'NORMAL' && v.currentIndex >= lastIndex && !leaving) {
+        void leaveAll(`${lastIndex + 1}번 문제 정답 공개`);
+      }
+    },
+  );
   await new Promise<void>((r, j) => {
     host.once('connect', () => r());
     host.once('connect_error', j);
   });
 
-  const picked = [...NAMES].sort(() => Math.random() - 0.5).slice(0, Math.min(args.count, NAMES.length));
-  const bots = picked.map((name, i) => new Bot(name, `0108${String(1000000 + i).padStart(7, '0')}`, args.skill, () => answers, args.url));
+  const picked = NAMES.slice(0, Math.min(args.count, NAMES.length)); // 같은 순서라 다시 켜도 같은 사람이 복귀
+  for (let i = 0; i < picked.length; i++) {
+    bots.push(new Bot(picked[i]!, `0108${String(1000000 + i).padStart(7, '0')}`, args.skill, () => answers, args.url, lastIndex));
+  }
   for (const b of bots) {
     await b.join();
     await sleep(rand(700, 2200)); // 한 명씩 들어오는 느낌
   }
-  log(`봇 ${bots.length}명 준비 완료. 콘솔에서 입장 마감 → 문제 공개 → 타이머 시작을 눌러 주세요.`);
+  log(`아바타 ${bots.length}명 준비 완료${lastIndex >= 0 ? ` (${lastIndex + 1}번 문제까지 함께 뛰고 퇴장)` : ''}. 콘솔에서 입장 마감 → 문제 공개 → 타이머 시작을 눌러 주세요.`);
 
   setTimeout(() => {
     log(`${args.minutes}분이 지나 봇을 종료합니다.`);

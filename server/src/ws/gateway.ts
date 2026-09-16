@@ -204,6 +204,7 @@ export function createGateway(io: Server, game: GameService, deps: GatewayDeps):
       handle(C2S.hostStartRevival, startRevivalSchema, (p) => ({ type: 'startRevival', index: p.index, force: p.force }));
       handle(C2S.hostRestore, playerIdSchema, (p) => ({ type: 'restore', playerId: p.playerId }));
       handle(C2S.hostKick, playerIdSchema, (p) => ({ type: 'kick', playerId: p.playerId }));
+      handle(C2S.hostRemovePlayer, playerIdSchema, (p) => ({ type: 'removePlayer', playerId: p.playerId }));
       handle(C2S.hostSetWinner, playerIdSchema, (p) => ({ type: 'setWinner', playerId: p.playerId }));
       handle(C2S.hostUpdateConfig, updateConfigSchema, (p) => ({ type: 'updateConfig', patch: p }));
       handle(C2S.hostQuestionsReplace, questionsReplaceSchema, (p) => ({ type: 'questionsReplace', questions: p.questions }));

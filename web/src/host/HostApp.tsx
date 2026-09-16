@@ -414,6 +414,15 @@ function Players({ view, emit }: { view: RoomStateForHost; emit: (e: string, p?:
                       퇴장
                     </button>
                   )}
+                  {(p.status === 'ELIMINATED' || view.status === 'LOBBY' || view.status === 'LOCKED') && (
+                    <button
+                      className="small ghost"
+                      title="명단·집계·CSV에서 완전히 제거"
+                      onClick={() => confirm(`${p.name} 참가자를 명단에서 완전히 지웁니까? 집계와 CSV에서도 사라집니다.`) && emit(C2S.hostRemovePlayer, { playerId: p.id })}
+                    >
+                      삭제
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

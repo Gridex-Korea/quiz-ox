@@ -316,6 +316,24 @@ describe('되돌리기와 수동 개입', () => {
     expect(r.effects.some((e) => e.type === 'timer:clear')).toBe(true);
   });
 
+  it('removePlayer는 참가자를 방에서 완전히 지우고 연결을 끊는다', () => {
+    const { s, ids } = setup(3);
+    let r = run(s, { type: 'showQuestion' });
+    r = run(r.state, { type: 'startTimer' }, T0);
+    r = run(r.state, { type: 'choose', playerId: ids[0]!, index: 0, choice: 'O' }, T0 + 1000);
+    const removed = run(r.state, { type: 'removePlayer', playerId: ids[0]! });
+    expect(removed.state.players[ids[0]!]).toBeUndefined();
+    expect(removed.state.currentAnswers[ids[0]!]).toBeUndefined();
+    expect(Object.keys(removed.state.players)).toHaveLength(2);
+    expect(removed.effects.some((e) => e.type === 'toPlayer' && e.event === S2C.playerRemoved)).toBe(true);
+    expect(removed.effects.some((e) => e.type === 'disconnect' && e.playerId === ids[0]!)).toBe(true);
+    // 지운 참가자는 마감 집계에도 들어가지 않는다
+    const tu = run(removed.state, { type: 'timeUp' }, T0 + 16_000);
+    const toScreen = broadcasts(tu.effects, S2C.questionTimeup).find((e) => e.to === 'screenHost')!;
+    expect((toScreen.payload as { counts: { O: number; X: number; none: number } }).counts).toEqual({ O: 0, X: 0, none: 2 });
+    expect(reduce(removed.state, { type: 'removePlayer', playerId: ids[0]! }, T0).error).toBe('unknown_player');
+  });
+
   it('restore/kick', () => {
     const { s, ids } = setup(2);
     const { s: after } = playRound(s, ids, ['X', 'O']);

@@ -31,6 +31,7 @@ export const S2C = {
   gameEnded: 'game:ended',
   gameWinner: 'game:winner',
   roomReset: 'room:reset',
+  playerRemoved: 'player:removed',
   hostAlert: 'host:alert',
   sessionReplaced: 'session:replaced',
 } as const;
@@ -53,6 +54,7 @@ export const C2S = {
   hostStartRevival: 'host:startRevival',
   hostRestore: 'host:restore',
   hostKick: 'host:kick',
+  hostRemovePlayer: 'host:removePlayer',
   hostSetWinner: 'host:setWinner',
   hostUpdateConfig: 'host:updateConfig',
   hostQuestionsReplace: 'host:questions:replace',
