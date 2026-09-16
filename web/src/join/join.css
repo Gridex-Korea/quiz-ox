@@ -160,6 +160,10 @@ button.big {
   color: #f87171;
   animation: pulse 0.5s ease-in-out infinite;
 }
+.timer.pre {
+  color: var(--warn);
+  font-size: 28px;
+}
 .qtext {
   font-size: 22px;
   font-weight: 700;

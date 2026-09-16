@@ -217,6 +217,7 @@ function JoinForm({ notice, onJoined }: { notice: string | null; onJoined: (s: S
 
 function Playing({ view, session, room }: { view: RoomStateForPlayer; session: Session; room: ReturnType<typeof useRoom<RoomStateForPlayer>> }) {
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
+  const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
   const [pending, setPending] = useState<Choice | null>(null);
 
   useEffect(() => {
@@ -277,6 +278,8 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
           <div className="timer-row">
             {view.status === 'ANSWERING' && remaining !== null ? (
               <span className={`timer ${remaining <= 5000 ? 'urgent' : ''}`}>⏱ {Math.ceil(remaining / 1000)}</span>
+            ) : pre !== null ? (
+              <span className="timer pre">곧 시작 {Math.ceil(pre / 1000)}</span>
             ) : (
               <span className="timer muted">⏱ 대기</span>
             )}
@@ -301,7 +304,9 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
           {eligible && (
             <p className="ack">
               {view.status !== 'ANSWERING'
-                ? '사회자가 타이머를 시작하면 버튼이 열립니다'
+                ? pre !== null
+                  ? '잠시 후 자동으로 시작됩니다'
+                  : '사회자가 타이머를 시작하면 버튼이 열립니다'
                 : view.me.choice
                   ? `✓ ${view.me.choice} 선택됨 (마감 전까지 변경 가능)`
                   : pending

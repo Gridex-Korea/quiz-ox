@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { AnswerRecord, Player, Question, Room, RoomState, RoundResult } from '@ox/shared';
+import { DEFAULT_CONFIG, type AnswerRecord, type Player, type Question, type Room, type RoomState, type RoundResult } from '@ox/shared';
 
 const SCHEMA_VERSION = 1;
 
@@ -177,9 +177,11 @@ export class Store {
       roundMode: (roomRow['round_mode'] as Room['roundMode']) ?? null,
       currentIndex: Number(roomRow['current_index']),
       deadlineAt: int(roomRow['deadline_at']),
+      autoStartAt: null,
       revivalUsedCount: Number(roomRow['revival_used_count']),
       winnerPlayerId: (roomRow['winner_player_id'] as string | null) ?? null,
-      config: JSON.parse(String(roomRow['config'])),
+      // 예전 저장분에 새 설정 항목이 없으면 기본값으로 채운다
+      config: { ...DEFAULT_CONFIG, ...(JSON.parse(String(roomRow['config'])) as Partial<Room['config']>) },
       createdAt: Number(roomRow['created_at']),
       updatedAt: Number(roomRow['updated_at']),
       phonesPurgedAt: int(roomRow['phones_purged_at']),

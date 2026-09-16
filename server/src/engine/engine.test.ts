@@ -278,6 +278,38 @@ describe('패자부활전', () => {
   });
 });
 
+describe('타이머 자동 시작', () => {
+  it('문제 공개가 준비 카운트 뒤 자동 시작을 예약하고, 수동 시작·라운드 취소가 예약을 해제한다', () => {
+    const { s } = setup(1);
+    const shown = run(s, { type: 'showQuestion' });
+    expect(shown.state.room.autoStartAt).toBe(T0 + 3000);
+    const set = shown.effects.find((e) => e.type === 'autostart:set');
+    expect(set).toEqual({ type: 'autostart:set', at: T0 + 3000, index: 0 });
+    expect((broadcasts(shown.effects, S2C.questionShow)[0]!.payload as { autoStartAt: number }).autoStartAt).toBe(T0 + 3000);
+    expect(screenView(shown.state, T0, 'u').autoStartAt).toBe(T0 + 3000);
+
+    const started = run(shown.state, { type: 'startTimer' }, T0 + 1000);
+    expect(started.state.room.autoStartAt).toBeNull();
+    expect(started.effects.some((e) => e.type === 'autostart:clear')).toBe(true);
+    expect(screenView(started.state, T0, 'u').autoStartAt).toBeNull();
+
+    const cancelled = run(started.state, { type: 'cancelRound' }, T0 + 2000);
+    expect(cancelled.state.room.autoStartAt).toBeNull();
+    expect(cancelled.effects.some((e) => e.type === 'autostart:clear')).toBe(true);
+  });
+
+  it('자동 시작을 끄면 예약하지 않고, 준비 카운트 0이면 공개 시각에 바로 예약한다', () => {
+    const manual = run(setup(1).s, { type: 'updateConfig', patch: { autoStart: false } }).state;
+    const shownManual = run(manual, { type: 'showQuestion' });
+    expect(shownManual.state.room.autoStartAt).toBeNull();
+    expect(shownManual.effects.some((e) => e.type === 'autostart:set')).toBe(false);
+
+    const instant = run(setup(1).s, { type: 'updateConfig', patch: { autoStartDelaySec: 0 } }).state;
+    const shownInstant = run(instant, { type: 'showQuestion' });
+    expect(shownInstant.state.room.autoStartAt).toBe(T0);
+  });
+});
+
 describe('되돌리기와 수동 개입', () => {
   it('undoReveal은 스냅샷으로 복원하고 TIME_UP으로 돌아간다', () => {
     const { s, ids } = setup(2);

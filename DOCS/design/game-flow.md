@@ -48,7 +48,7 @@ stateDiagram-v2
     LOBBY --> LOCKED: host:lock (입장 마감)
     LOCKED --> QUESTION_SHOWN: host:showQuestion (mode=NORMAL)
     state "라운드 (mode = NORMAL | REVIVAL)" as ROUND {
-        QUESTION_SHOWN --> ANSWERING: host:startTimer
+        QUESTION_SHOWN --> ANSWERING: 준비 카운트 뒤 자동 시작 또는 host:startTimer
         ANSWERING --> TIME_UP: 마감 시각 도달 또는 host:endTimerNow
         TIME_UP --> REVEALED: host:reveal
         REVEALED --> TIME_UP: host:undoReveal (판정 취소)
@@ -64,11 +64,14 @@ stateDiagram-v2
 |---|---|---|---|
 | `LOBBY` | 입장 접수 중. QR 코드 표시, 아바타가 무대를 돌아다님 | 로비 화면 | 입장 폼 → 대기 화면 |
 | `LOCKED` | 입장 마감. 신규 등록 거절, 기존 참가자 재접속만 허용 | 로비 화면 + "곧 시작합니다" | 대기 화면 |
-| `QUESTION_SHOWN` | 문제 지문 공개, 타이머 미시작. 사회자가 읽어주는 시간. `REVIVAL`이면 무대 교대 연출 | 문제 화면, 타이머 대기 | 문제 표시, 버튼 비활성 |
+| `QUESTION_SHOWN` | 문제 지문 공개. 기본 설정에서는 준비 카운트(`autoStartDelaySec`, 기본 3초) 뒤 타이머가 **자동 시작**된다. 사회자는 "지금 시작"으로 건너뛸 수 있고, 설정(`autoStart`)을 끄면 수동. `REVIVAL`이면 무대 교대 연출 | 문제 화면, 3·2·1 준비 카운트 | 문제 표시, 버튼 잠김, "곧 시작 N" |
 | `ANSWERING` | 타이머 진행. 자격 있는 참가자만 답변 접수. 아바타 이동은 `liveMoves`면 실시간, 아니면 ✓ 배지만 | 문제 + 카운트다운 + 이동(또는 배지) | 자격자: O/X 활성 / 관전자: 관전 안내 |
 | `TIME_UP` | 마감. 답변 잠김. 숨김 모드였다면 이때 선택이 공개됨. O/X/미응답 인원 표시 | (숨김 모드: 일제 이동 →) 인원 카운트 연출 | "결과를 기다리세요" |
 | `REVEALED` | 정답 공개, 스트라이크 적용, 이동·복귀·퇴장 연출 | 정답 강조 + 이동 연출 | 생존/대기실/부활/탈락 안내 |
 | `ENDED` | 게임 종료. 생존자 발표. 최종 결승(추가 문제·가위바위보)은 앱 밖에서 진행하고 `host:setWinner`로 우승자만 표시 | 최종 생존자 화면 → 우승자 왕관 | 종료 화면 / 우승자는 축하 화면 |
+
+> [!tip] 결정 (2026-09-17, 사회자)
+> **문제를 내면 타이머가 자동으로 시작된다.** 서버가 문제 공개 시각 + 준비 카운트에 `startTimer`를 예약하며, 그 사이 사회자가 직접 시작하거나 문제를 바꾸거나 라운드를 취소하면 예약은 무효가 된다. 라운드 취소와 서버 재시작 뒤에는 사고 대응 중일 수 있으므로 자동 시작하지 않는다.
 
 > [!tip] 결정
 > `LOCKED`를 `LOBBY`와 분리한 이유는 "당연히 중간에 들어오는 건 없다"는 규칙을 코드 한 곳(등록 API가 `LOBBY`에서만 열림)에서 강제하기 위해서다. 패자부활전을 별도 상태가 아니라 라운드의 `mode` 속성으로 둔 이유는 타이머·마감·되돌리기 코드를 두 번 짜지 않기 위해서다.

@@ -59,6 +59,8 @@ export const updateConfigSchema = z
     liveMovesUntilOrderNo: z.number().int().min(-1).max(999),
     answerGraceMs: z.number().int().min(0).max(3000),
     answerRateLimitMs: z.number().int().min(0).max(3000),
+    autoStart: z.boolean(),
+    autoStartDelaySec: z.number().int().min(0).max(30),
   })
   .partial();
 

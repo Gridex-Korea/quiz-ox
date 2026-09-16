@@ -35,6 +35,10 @@ export interface RoomConfig {
   answerGraceMs: number;
   /** 참가자당 선택 변경 최소 간격(ms) */
   answerRateLimitMs: number;
+  /** 문제 공개 뒤 타이머를 자동으로 시작하는가 */
+  autoStart: boolean;
+  /** 자동 시작까지 준비 카운트(초). 0이면 공개와 동시에 시작 */
+  autoStartDelaySec: number;
 }
 
 export const DEFAULT_CONFIG: RoomConfig = {
@@ -44,6 +48,8 @@ export const DEFAULT_CONFIG: RoomConfig = {
   liveMovesUntilOrderNo: 3,
   answerGraceMs: 300,
   answerRateLimitMs: 300,
+  autoStart: true,
+  autoStartDelaySec: 3,
 };
 
 export interface Question {
@@ -158,6 +164,8 @@ export interface Room {
   /** 진행 중 문제의 orderNo. 시작 전 -1 */
   currentIndex: number;
   deadlineAt: number | null;
+  /** QUESTION_SHOWN에서 타이머가 자동 시작될 서버 시각(ms). 수동 모드면 null */
+  autoStartAt: number | null;
   revivalUsedCount: number;
   winnerPlayerId: string | null;
   config: RoomConfig;
@@ -188,6 +196,7 @@ export interface RoomStateForPlayer {
   canAnswer: boolean;
   question: QuestionPublic | null;
   deadline: number | null;
+  autoStartAt: number | null;
   playerCount: number;
   counts: Counts | null;
   answer: Choice | null;
@@ -206,6 +215,7 @@ export interface RoomStateForScreen {
   players: PublicPlayer[];
   question: QuestionPublic | null;
   deadline: number | null;
+  autoStartAt: number | null;
   counts: Counts | null;
   answer: Choice | null;
   outcomes: Outcome[] | null;

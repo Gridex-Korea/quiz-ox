@@ -142,6 +142,7 @@ function Console({
 }) {
   const [tab, setTab] = useState<Tab>('players');
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
+  const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
   const counts = useMemo(() => {
     const c: Record<string, number> = { ACTIVE: 0, WAITING: 0, ELIMINATED: 0 };
     for (const p of view.players) c[p.status] = (c[p.status] ?? 0) + 1;
@@ -172,7 +173,14 @@ function Console({
       case 'LOCKED':
         return { label: nextNormal ? `첫 문제 공개 · Q${nextNormal.orderNo + 1}` : '문제를 먼저 등록하세요', onClick: () => emit(C2S.hostShowQuestion, {}), disabled: !nextNormal };
       case 'QUESTION_SHOWN':
-        return { label: `타이머 시작 (${view.question?.timeLimitSec ?? 0}초)`, onClick: () => emit(C2S.hostStartTimer, {}), disabled: false };
+        return {
+          label:
+            pre !== null && pre > 0
+              ? `${Math.ceil(pre / 1000)}초 뒤 자동 시작 · 지금 시작 (${view.question?.timeLimitSec ?? 0}초)`
+              : `타이머 시작 (${view.question?.timeLimitSec ?? 0}초)`,
+          onClick: () => emit(C2S.hostStartTimer, {}),
+          disabled: false,
+        };
       case 'ANSWERING':
         return { label: `답변 중… ${remaining !== null ? Math.ceil(remaining / 1000) : ''}초`, onClick: () => undefined, disabled: true };
       case 'TIME_UP':
@@ -625,9 +633,17 @@ function Settings({ view, emit, token, toast }: { view: RoomStateForHost; emit: 
             마감 유예(ms)
             <input type="number" min={0} max={3000} value={cfg.answerGraceMs} disabled={inGame} onChange={(e) => setCfg({ ...cfg, answerGraceMs: Number(e.target.value) })} />
           </label>
+          <label className="row" style={{ alignItems: 'center', marginTop: 22 }}>
+            <input type="checkbox" checked={cfg.autoStart} style={{ width: 20, height: 20 }} onChange={(e) => setCfg({ ...cfg, autoStart: e.target.checked })} />
+            문제 공개 시 타이머 자동 시작
+          </label>
+          <label>
+            자동 시작 준비 카운트(초, 0이면 즉시)
+            <input type="number" min={0} max={30} value={cfg.autoStartDelaySec} disabled={!cfg.autoStart} onChange={(e) => setCfg({ ...cfg, autoStartDelaySec: Number(e.target.value) })} />
+          </label>
         </div>
         <p className="muted" style={{ margin: 0 }}>
-          미응답은 항상 오답입니다. 게임 중에는 부활전 시점과 이동 공개 시점만 바꿀 수 있습니다.
+          미응답은 항상 오답입니다. 게임 중에는 부활전 시점, 이동 공개 시점, 자동 시작만 바꿀 수 있습니다.
         </p>
         <button className="small primary" onClick={save}>
           설정 저장

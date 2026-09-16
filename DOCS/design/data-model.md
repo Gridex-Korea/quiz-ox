@@ -87,7 +87,7 @@ erDiagram
 | `round_mode` | TEXT | `NORMAL \| REVIVAL`, NULL 허용 | 진행 중 라운드의 모드. 라운드 밖(`LOBBY`·`LOCKED`·`ENDED`)에서는 NULL → [[game-flow]] 라운드 모드 |
 | `current_index` | INTEGER | 기본 -1 | 진행 중 문제의 `order_no`. 시작 전 -1 |
 | `deadline_at` | INTEGER | NULL 허용 | `ANSWERING`일 때 마감 서버 시각(ms). 복구 시 신뢰하지 않음 |
-| `config` | JSON | | `{ defaultTimeLimitSec: 15, maxStrikes: 2, revivalAfterOrderNo: 4, liveMovesUntilOrderNo: 3, answerGraceMs: 300 }`. `revivalAfterOrderNo`는 패자부활전 예정 시점(이 `order_no` 문제의 정답 공개 뒤, 0부터 세므로 콘솔에는 5번으로 표시), 기본값은 문제 수의 절반 지점. `liveMovesUntilOrderNo`는 아바타 이동을 실시간으로 보여주는 마지막 문제(콘솔에는 4번까지로 표시), 그 뒤 문제는 숨김 모드. 둘 다 언제든 변경 가능. 미응답=오답은 규칙이므로 설정이 없다 |
+| `config` | JSON | | `{ defaultTimeLimitSec: 15, maxStrikes: 2, revivalAfterOrderNo: 4, liveMovesUntilOrderNo: 3, answerGraceMs: 300, answerRateLimitMs: 300, autoStart: true, autoStartDelaySec: 3 }`. `autoStart`·`autoStartDelaySec`는 문제 공개 뒤 타이머 자동 시작 여부와 준비 카운트(초). `revivalAfterOrderNo`는 패자부활전 예정 시점(이 `order_no` 문제의 정답 공개 뒤, 0부터 세므로 콘솔에는 5번으로 표시), 기본값은 문제 수의 절반 지점. `liveMovesUntilOrderNo`는 아바타 이동을 실시간으로 보여주는 마지막 문제(콘솔에는 4번까지로 표시), 그 뒤 문제는 숨김 모드. 둘 다 언제든 변경 가능. 미응답=오답은 규칙이므로 설정이 없다 |
 | `revival_used_count` | INTEGER | 기본 0 | 패자부활전을 연 횟수. 1 이상이면 추가 부활전은 `force` 필요 |
 | `winner_player_id` | TEXT | NULL 허용, FK players | 오프라인 결승 뒤 사회자가 지정한 우승자. `ENDED`에서만 채움 |
 | `created_at`, `updated_at` | TEXT | ISO 8601 | |

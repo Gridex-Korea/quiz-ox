@@ -23,6 +23,7 @@ export function createRoom(now: number, config: Partial<RoomConfig> = {}): Room 
     roundMode: null,
     currentIndex: -1,
     deadlineAt: null,
+    autoStartAt: null,
     revivalUsedCount: 0,
     winnerPlayerId: null,
     config: { ...DEFAULT_CONFIG, ...config },

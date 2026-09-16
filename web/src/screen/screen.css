@@ -85,6 +85,11 @@
 .s-timer .done {
   color: var(--warn);
 }
+.s-timer .pre {
+  color: var(--warn);
+  font-size: 80px;
+  animation: popIn 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
 .s-timer .answer {
   font-size: 54px;
 }

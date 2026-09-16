@@ -16,6 +16,7 @@ export interface Emitter {
 export class GameService {
   state: RoomState;
   private timer: NodeJS.Timeout | null = null;
+  private autoStartTimer: NodeJS.Timeout | null = null;
   private pendingDisconnects = new Set<NodeJS.Timeout>();
   private emitter: Emitter | null = null;
   /** 재시작 복구 등, 다음 사회자 접속 때 보여줄 알림 */
@@ -31,6 +32,8 @@ export class GameService {
 
   attach(emitter: Emitter): void {
     this.emitter = emitter;
+    // 재시작 직후에는 자동 시작 예약이 사라졌으므로 사회자가 직접 시작한다
+    this.state.room.autoStartAt = null;
     // 재시작 직후 ANSWERING이었다면 마감 시각을 믿을 수 없으므로 문제 화면으로 내린다.
     if (this.state.room.status === 'ANSWERING') {
       const r = reduce(this.state, { type: 'cancelRound' }, Date.now());
@@ -86,6 +89,12 @@ export class GameService {
         case 'timer:clear':
           this.clearTimer();
           break;
+        case 'autostart:set':
+          this.setAutoStart(e.at, e.index, now);
+          break;
+        case 'autostart:clear':
+          this.clearAutoStart();
+          break;
         case 'disconnect': {
           const t = setTimeout(() => {
             this.pendingDisconnects.delete(t);
@@ -123,6 +132,22 @@ export class GameService {
     this.timer = null;
   }
 
+  /** 문제 공개 뒤 준비 카운트가 끝나면 타이머를 시작한다. 그 사이 사회자가 시작·취소·다른 문제로 바꾸면 무효 */
+  private setAutoStart(at: number, index: number, now: number): void {
+    this.clearAutoStart();
+    this.autoStartTimer = setTimeout(() => {
+      this.autoStartTimer = null;
+      if (this.state.room.status !== 'QUESTION_SHOWN' || this.state.room.currentIndex !== index) return;
+      const r = this.dispatch({ type: 'startTimer' });
+      if (r.error) this.log.error(`자동 시작 실패: ${r.error}`);
+    }, Math.max(0, at - now));
+  }
+
+  private clearAutoStart(): void {
+    if (this.autoStartTimer) clearTimeout(this.autoStartTimer);
+    this.autoStartTimer = null;
+  }
+
   private persist(): void {
     if (!this.store) return;
     try {
@@ -135,6 +160,7 @@ export class GameService {
   /** 종료 시 타이머 정리 */
   dispose(): void {
     this.clearTimer();
+    this.clearAutoStart();
     for (const t of this.pendingDisconnects) clearTimeout(t);
     this.pendingDisconnects.clear();
   }

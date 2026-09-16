@@ -34,6 +34,9 @@ export type Effect =
   | { type: 'toEachPlayer'; event: string; payloadFor: (playerId: string) => unknown }
   | { type: 'timer:set'; deadline: number }
   | { type: 'timer:clear' }
+  /** 문제 공개 뒤 자동 타이머 시작 예약(해당 문제가 여전히 QUESTION_SHOWN일 때만 실행) */
+  | { type: 'autostart:set'; at: number; index: number }
+  | { type: 'autostart:clear' }
   | { type: 'disconnect'; playerId: string; delayMs: number }
   | { type: 'alert'; level: 'info' | 'warning' | 'error'; message: string }
   | { type: 'stateChanged' };
@@ -203,9 +206,11 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       const deadline = now + seconds * 1000;
       state.room.status = 'ANSWERING';
       state.room.deadlineAt = deadline;
+      state.room.autoStartAt = null;
       state.currentAnswers = {};
       touch(state, now);
       return ok(state, [
+        { type: 'autostart:clear' },
         { type: 'timer:set', deadline },
         { type: 'broadcast', to: 'all', event: S2C.questionStart, payload: { index: q.orderNo, deadline, serverNow: now } },
         { type: 'stateChanged' },
@@ -237,11 +242,13 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       const q = currentQuestion(state);
       state.room.status = 'QUESTION_SHOWN';
       state.room.deadlineAt = null;
+      state.room.autoStartAt = null; // 사고 대응 중이므로 자동 시작하지 않는다. 사회자가 다시 시작
       state.currentAnswers = {};
       if (q) delete state.answers[q.id];
       touch(state, now);
       return ok(state, [
         { type: 'timer:clear' },
+        { type: 'autostart:clear' },
         { type: 'broadcast', to: 'all', event: S2C.roundCancelled, payload: { index: state.room.currentIndex } },
         { type: 'stateChanged' },
       ]);
@@ -321,8 +328,9 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       const inGame = !['LOBBY', 'LOCKED'].includes(state.room.status);
       const patch = { ...cmd.patch };
       if (inGame) {
+        const allowedInGame: (keyof RoomConfig)[] = ['revivalAfterOrderNo', 'liveMovesUntilOrderNo', 'autoStart', 'autoStartDelaySec'];
         for (const key of Object.keys(patch) as (keyof RoomConfig)[]) {
-          if (key !== 'revivalAfterOrderNo' && key !== 'liveMovesUntilOrderNo') return fail(prev, 'config_locked');
+          if (!allowedInGame.includes(key)) return fail(prev, 'config_locked');
         }
       }
       state.room.config = { ...state.room.config, ...patch };
@@ -384,6 +392,7 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       };
       return ok(fresh, [
         { type: 'timer:clear' },
+        { type: 'autostart:clear' },
         { type: 'broadcast', to: 'all', event: S2C.roomReset, payload: { roomCode: fresh.room.code } },
         { type: 'stateChanged' },
       ]);
@@ -502,6 +511,9 @@ function showQuestion(state: RoomState, prev: RoomState, index: number | undefin
   state.room.deadlineAt = null;
   state.currentAnswers = {};
   q.usedAt = q.usedAt ?? now;
+  // 문제 공개와 함께 준비 카운트 뒤 타이머 자동 시작(설정). 사회자는 "지금 시작"으로 건너뛸 수 있다
+  const autoStartAt = state.room.config.autoStart ? now + Math.max(0, state.room.config.autoStartDelaySec) * 1000 : null;
+  state.room.autoStartAt = autoStartAt;
   touch(state, now);
 
   const base = {
@@ -511,9 +523,12 @@ function showQuestion(state: RoomState, prev: RoomState, index: number | undefin
     eligible: eligibleStatus(resolvedMode),
     liveMoves: isLiveMoves(state.room.config, q.orderNo),
     question: questionPublic(state, q, false),
+    autoStartAt,
   };
+  const scheduling: Effect[] = autoStartAt !== null ? [{ type: 'autostart:set', at: autoStartAt, index: q.orderNo }] : [{ type: 'autostart:clear' }];
   return ok(state, [
     { type: 'timer:clear' },
+    ...scheduling,
     { type: 'broadcast', to: 'players', event: S2C.questionShow, payload: base },
     { type: 'broadcast', to: 'screen', event: S2C.questionShow, payload: base },
     { type: 'broadcast', to: 'host', event: S2C.questionShow, payload: { ...base, answer: q.answer } },
@@ -725,6 +740,7 @@ function undoReveal(state: RoomState, prev: RoomState, now: number): Result {
 function endGame(state: RoomState, now: number): Result {
   state.room.status = 'ENDED';
   state.room.deadlineAt = null;
+  state.room.autoStartAt = null;
   touch(state, now);
   const survivors = Object.values(state.players)
     .filter((p) => p.status === 'ACTIVE')
@@ -732,6 +748,7 @@ function endGame(state: RoomState, now: number): Result {
   const totalQuestions = state.questions.filter((q) => q.usedAt !== null).length;
   return ok(state, [
     { type: 'timer:clear' },
+    { type: 'autostart:clear' },
     { type: 'broadcast', to: 'all', event: S2C.gameEnded, payload: { survivors, totalQuestions } },
     { type: 'stateChanged' },
   ]);

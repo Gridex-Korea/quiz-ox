@@ -75,6 +75,8 @@ export interface QuestionShowPayload {
   eligible: 'ACTIVE' | 'WAITING';
   liveMoves: boolean;
   question: QuestionPublic;
+  /** 타이머 자동 시작 예정 서버 시각(ms). 수동이면 null */
+  autoStartAt: number | null;
   /** 사회자 룸에만 실림 */
   answer?: Choice;
 }

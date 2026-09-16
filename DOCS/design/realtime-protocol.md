@@ -46,7 +46,7 @@ related: ["[[game-flow]]", "[[data-model]]", "[[ADR-0001-realtime-socketio]]"]
 | `lobby:playerJoined` | `screen`, `host` | `{ player: PublicPlayer }` | 새 참가자 등록 |
 | `player:connection` | `screen`, `host` | `{ playerId, connected }` | 소켓 연결/끊김 |
 | `room:locked` | 전체 | `{ playerCount }` | 입장 마감 |
-| `question:show` | 전체 | `{ index, total, mode: "NORMAL" \| "REVIVAL", eligible: "ACTIVE" \| "WAITING", liveMoves: boolean, text, imageUrl?, timeLimitSec }` | 문제 공개. `mode`로 스크린은 무대 교대 여부를, 폰은 자기 답변 자격을 판단. `liveMoves`가 false면 스크린은 숨김 모드 자막을 띄움. **정답은 절대 포함하지 않음** (사회자 룸만 `answer` 필드 추가) |
+| `question:show` | 전체 | `{ index, total, mode: "NORMAL" \| "REVIVAL", eligible: "ACTIVE" \| "WAITING", liveMoves: boolean, autoStartAt: number \| null, question }` | 문제 공개. `mode`로 스크린은 무대 교대 여부를, 폰은 자기 답변 자격을 판단. `liveMoves`가 false면 스크린은 숨김 모드 자막을 띄움. `autoStartAt`(서버 절대 시각)이 있으면 그때 타이머가 자동 시작되므로 화면은 3·2·1 카운트를 그림. **정답은 절대 포함하지 않음** (사회자 룸만 `answer` 필드 추가) |
 | `question:start` | 전체 | `{ index, deadline }` | 타이머 시작. `deadline`은 서버 절대 시각(ms) |
 | `question:extended` | 전체 | `{ deadline }` | 타이머 연장/조기 마감으로 마감 시각 변경 |
 | `answer:moved` | `host` 항상, `screen`은 `liveMoves`일 때만 | `{ playerId, choice: "O" \| "X" }` | 참가자 선택·변경. 스크린이 아바타를 걷게 함 |

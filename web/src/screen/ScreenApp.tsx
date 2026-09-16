@@ -84,7 +84,9 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   const allocRef = useRef(new SlotAllocator());
   const lastSlots = useRef(new Map<string, Slot>());
   const lastTick = useRef<number>(-1);
+  const lastPre = useRef<number>(-1);
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
+  const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
 
   // 카운트다운 마지막 5초 틱
   useEffect(() => {
@@ -95,6 +97,19 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       play('tick');
     }
   }, [remaining]);
+
+  // 자동 시작 준비 카운트(3·2·1) 틱
+  useEffect(() => {
+    if (pre === null) {
+      lastPre.current = -1;
+      return;
+    }
+    const sec = Math.ceil(pre / 1000);
+    if (sec > 0 && sec !== lastPre.current) {
+      lastPre.current = sec;
+      play('tick');
+    }
+  }, [pre]);
 
   // 이벤트 기반 연출
   useEffect(() => {
@@ -219,7 +234,8 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
           {view.status === 'ANSWERING' && remaining !== null && (
             <span className={remaining <= 5000 ? 'urgent' : ''}>⏱ {String(Math.ceil(remaining / 1000)).padStart(2, '0')}</span>
           )}
-          {view.status === 'QUESTION_SHOWN' && <span className="muted">⏱ 준비</span>}
+          {view.status === 'QUESTION_SHOWN' &&
+            (pre !== null && pre > 0 ? <span className="pre">{Math.ceil(pre / 1000)}</span> : <span className="muted">⏱ 준비</span>)}
           {view.status === 'TIME_UP' && <span className="done">마감</span>}
           {view.status === 'REVEALED' && view.answer && <span className={`answer ${view.answer === 'O' ? 'o' : 'x'}`}>정답 {view.answer}</span>}
         </div>
