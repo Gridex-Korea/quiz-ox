@@ -20,7 +20,7 @@ related: ["[[game-flow]]", "[[data-model]]", "[[ADR-0001-realtime-socketio]]"]
 |---|---|---|---|
 | 참가자 | 먼저 `POST /api/join`으로 등록 → 받은 `sessionToken`을 Socket.IO `auth`에 넣어 연결 | 세션 토큰(랜덤 32바이트, 서버는 해시만 보관) | `players`, `p:<playerId>` |
 | 스크린 | `?role=screen` 로 연결 | 스크린 키(환경변수, URL 쿼리가 아닌 `auth`로 전달) | `screen` |
-| 사회자 | `POST /api/host/login`으로 PIN 확인 → httpOnly 쿠키 → 소켓 연결 | PIN(환경변수) | `host` |
+| 사회자 | `POST /api/host/login`으로 PIN 확인 → 토큰(12시간, 서버 메모리) → 소켓 `auth.token`과 HTTP `Authorization: Bearer` | PIN(환경변수), 5회 실패 시 10분 잠금 | `host` |
 
 토큰이 무효하면 서버가 `connect_error`로 거절하고, 참가자 폰은 입장 폼으로 돌아가 전화번호 재입력으로 복귀를 시도한다([[game-flow]] 재접속 흐름).
 
@@ -100,7 +100,9 @@ type RoomStateForHost = RoomStateForScreen & { questions: Question[]; currentInd
 | `host:end` | 사회자 | — | 강제 종료 |
 | `host:setWinner` | 사회자 | `{ playerId }` | `ENDED`에서만, 생존자 중 한 명 → `game:winner`. 다시 보내면 교체 |
 | `host:restore` / `host:kick` | 사회자 | `{ playerId }` | 참가자 수동 개입 |
-| `host:updateConfig` | 사회자 | `Partial<RoomConfig>` | `LOBBY`/`LOCKED`에서만 허용. 단 `revivalAfterOrderNo`(안내용 예정 시점)는 게임 중에도 변경 가능 |
+| `host:updateConfig` | 사회자 | `Partial<RoomConfig>` | `LOBBY`/`LOCKED`에서만 허용. 단 `revivalAfterOrderNo`·`liveMovesUntilOrderNo`는 게임 중에도 변경 가능 |
+| `host:questions:replace` / `host:question:upsert` / `host:question:delete` | 사회자 | 문제 목록 / 문제 1개 / `{ id }` | 문제 편집. 출제한 문제는 삭제·순서 변경 불가 |
+| `host:resetRoom` | 사회자 | `{ confirm: true, keepQuestions }` | 새 방 코드로 초기화. 참가자·기록 삭제, 문제는 선택 유지. 참가자 소켓에 `room:reset` 후 종료 |
 
 모든 사회자 명령은 서버가 현재 상태에서 허용되는지 확인하고, 아니면 `host:alert`로 이유를 돌려준다. 버튼 연타로 같은 명령이 두 번 오면 두 번째는 무시된다(멱등).
 

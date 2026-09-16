@@ -83,7 +83,7 @@ sequenceDiagram
 | 런타임 | Node.js 22 + TypeScript | 프론트와 언어 통일, Socket.IO 생태계 | Go(성능은 남지만 인력 1명에 언어 둘은 부담), Python FastAPI(WebSocket 룸·재접속을 직접 짜야 함) |
 | HTTP 서버 | Fastify | 빠르고 정적 파일·플러그인 간단 | Express(느리지만 가능), Next.js(Socket.IO와 궁합이 나쁨) |
 | 실시간 | Socket.IO | 룸, 자동 재접속, 폴링 폴백, 확인 응답 내장 | 순수 `ws`, Supabase Realtime, Firebase → [[ADR-0001-realtime-socketio]] |
-| 상태 | 인메모리 + SQLite 스냅샷 | 단일 인스턴스면 가장 단순하고 빠름 | Redis, Postgres → [[ADR-0002-single-instance-state]] |
+| 상태 | 인메모리 + SQLite 스냅샷 (Node 내장 `node:sqlite`, 네이티브 모듈 불필요) | 단일 인스턴스면 가장 단순하고 빠름. `better-sqlite3` 대신 내장 모듈을 써 Docker 빌드가 단순함 | Redis, Postgres, better-sqlite3 → [[ADR-0002-single-instance-state]] |
 | 프론트 | React 19 + Vite + TypeScript | 세 화면을 라우트로 한 번에, 빌드 결과를 서버가 서빙 | Svelte(가벼움, 익숙도 문제), 순수 JS |
 | 스크린 렌더링 | DOM (React 컴포넌트 + CSS transform/transition) | 참가자 약 50명(상한 100명)이면 DOM으로 60fps가 나오고, 스타일링·디버깅이 쉽고 의존성이 없음. 색종이·연기 파티클만 `canvas-confetti` 사용 | PixiJS 8(200명을 넘으면 재검토), Canvas 2D 직접, Phaser(게임 엔진은 과함) |
 | 아바타 그림 | 조합형 SVG/PNG 파츠(몸 색 × 얼굴 × 머리) 시드 기반 | 저작권 걱정 없이 수백 종 조합, 참가자가 바꿀 수 있음 | DiceBear API(외부 의존), 외부 캐릭터 이미지(저작권) |
