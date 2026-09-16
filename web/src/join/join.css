@@ -137,6 +137,10 @@ button.big {
 .banner.spectate {
   background: var(--bg-3);
 }
+.banner.practice {
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  color: #052e16;
+}
 .banner.lastlife {
   background: rgba(245, 158, 11, 0.25);
   color: #fde68a;
@@ -164,6 +168,12 @@ button.big {
   color: var(--warn);
   font-size: 28px;
 }
+.lock-notice {
+  color: var(--warn);
+  font-weight: 800;
+  font-size: 20px;
+  margin: 4px 0 0;
+}
 .qtext {
   font-size: 22px;
   font-weight: 700;
@@ -177,15 +187,16 @@ button.big {
   object-fit: contain;
   border-radius: 10px;
 }
+/* 폰은 한 손으로 쥐고 누르므로 O는 위, X는 아래로 세로 배치한다 */
 .ox {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
   flex: 1;
-  min-height: 220px;
+  min-height: 200px;
 }
 .ox-btn {
-  font-size: 96px;
+  font-size: 72px;
   font-weight: 900;
   border-radius: 20px;
   border: 4px solid transparent;

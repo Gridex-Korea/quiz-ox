@@ -126,6 +126,15 @@ describe('통합: 입장 → 라운드 → 판정 → 패자부활전', () => {
     expect(JSON.stringify(p1State)).not.toContain('1111');
 
     // 입장 마감 → 문제 공개 → 타이머
+    // 이 테스트는 일반 판정 흐름을 보므로 맛보기 문제를 꺼 둔다
+    const cfgP = waitFor<RoomStateForHost>(host, S2C.roomState, (s) => s.config.practiceUntilOrderNo === -1);
+    host.emit(C2S.hostUpdateConfig, { practiceUntilOrderNo: -1 });
+    await cfgP;
+
+    // 입장 마감: 먼저 카운트다운, 다시 누르면 즉시 마감
+    const lockingP = waitFor<{ lockAt: number }>(screen, S2C.roomLocking);
+    host.emit(C2S.hostLock);
+    expect((await lockingP).lockAt).toBeGreaterThan(Date.now());
     const lockedP = waitFor<RoomStateForScreen>(screen, S2C.roomState, (s) => s.status === 'LOCKED');
     host.emit(C2S.hostLock);
     await lockedP;

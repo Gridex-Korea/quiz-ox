@@ -219,6 +219,7 @@ function JoinForm({ notice, onJoined }: { notice: string | null; onJoined: (s: S
 function Playing({ view, session, room }: { view: RoomStateForPlayer; session: Session; room: ReturnType<typeof useRoom<RoomStateForPlayer>> }) {
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
   const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
+  const lockIn = useCountdown(view.status === 'LOBBY' ? view.lockAt : null, room.now);
   const [pending, setPending] = useState<Choice | null>(null);
 
   useEffect(() => {
@@ -243,6 +244,7 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
 
   const banner = (() => {
     if (view.status === 'LOBBY' || view.status === 'LOCKED' || view.status === 'ENDED') return null;
+    if (view.question?.practice) return { cls: 'practice', text: '🎈 맛보기 문제 · 틀려도 탈락하지 않아요' };
     if (me.status === 'WAITING' && isRevival) return { cls: 'revival', text: '🔥 패자부활전! 맞히면 복귀, 틀리면 탈락' };
     if (me.status === 'WAITING') return { cls: 'waiting', text: '대기실 · 관전 중 · 패자부활전을 기다려 주세요' };
     if (me.status === 'ACTIVE' && isRevival) return { cls: 'spectate', text: '패자부활전 진행 중 · 무대 생존자는 관전합니다' };
@@ -270,7 +272,11 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
           <Avatar spec={me.avatar} size={120} />
           <h2>입장 완료!</h2>
           <p className="muted">현재 {view.playerCount}명 입장</p>
-          <p className="muted">{view.status === 'LOCKED' ? '곧 시작합니다. 스크린을 봐 주세요.' : '사회자가 시작할 때까지 잠시만 기다려 주세요.'}</p>
+          {lockIn !== null && lockIn > 0 ? (
+            <p className="lock-notice">입장 마감까지 {Math.ceil(lockIn / 1000)}초</p>
+          ) : (
+            <p className="muted">{view.status === 'LOCKED' ? '곧 시작합니다. 스크린을 봐 주세요.' : '사회자가 시작할 때까지 잠시만 기다려 주세요.'}</p>
+          )}
         </section>
       )}
 
@@ -352,6 +358,11 @@ function Result({ view }: { view: RoomStateForPlayer }) {
       {view.finaleAt && view.me.status === 'ACTIVE' && <p className="badge ok">🎉 결승 진출! 잠시 후 발표됩니다</p>}
       {o === null ? (
         <p className="muted">관전 라운드였습니다. 다음 문제를 기다려 주세요.</p>
+      ) : o.practice && !o.correct ? (
+        <div className="outcome warn">
+          <h2>🎈 맛보기라 통과!</h2>
+          <p className="muted">다음 문제부터는 틀리면 대기실로 갑니다.</p>
+        </div>
       ) : o.correct ? (
         <div className="outcome ok">
           <h2>{o.revived ? '🎉 부활! 무대로 복귀' : '🎉 생존!'}</h2>

@@ -31,7 +31,7 @@ export interface RoomConfig {
   revivalAfterOrderNo: number;
   /** 아바타 이동을 실시간으로 보여주는 마지막 문제의 order_no. 0부터 셈. 그 뒤는 숨김 모드 */
   liveMovesUntilOrderNo: number;
-  /** 마감 시각 이후에도 이만큼(ms) 늦게 도착한 답은 인정 */
+  /** 마감 시각 이후에도 이만큼(ms) 늦게 도착한 답은 인정. 서버는 이 시간만큼 기다렸다가 집계한다 */
   answerGraceMs: number;
   /** 참가자당 선택 변경 최소 간격(ms) */
   answerRateLimitMs: number;
@@ -43,6 +43,10 @@ export interface RoomConfig {
   finalistThreshold: number;
   /** 참가자 채팅 허용 여부. 끄면 폰 입력이 잠기고 서버가 메시지를 버린다 */
   chatEnabled: boolean;
+  /** 입장 마감 카운트다운(초). 0이면 누르는 즉시 마감 */
+  lockCountdownSec: number;
+  /** 이 order_no까지는 맛보기 문제: 틀려도 스트라이크가 오르지 않는다. -1이면 맛보기 없음 */
+  practiceUntilOrderNo: number;
 }
 
 /** 채팅 메시지. 저장하지 않고 서버 메모리에 최근 200개만 둔다 */
@@ -69,12 +73,14 @@ export const DEFAULT_CONFIG: RoomConfig = {
   maxStrikes: 2,
   revivalAfterOrderNo: 4,
   liveMovesUntilOrderNo: 3,
-  answerGraceMs: 300,
+  answerGraceMs: 1000,
   answerRateLimitMs: 300,
   autoStart: true,
   autoStartDelaySec: 3,
   finalistThreshold: 3,
   chatEnabled: true,
+  lockCountdownSec: 10,
+  practiceUntilOrderNo: 0,
 };
 
 export interface Question {
@@ -100,6 +106,8 @@ export interface QuestionPublic {
   imageUrl: string | null;
   timeLimitSec: number;
   explanation: string | null;
+  /** 맛보기 문제(틀려도 통과). 화면이 안내 문구를 띄운다 */
+  practice: boolean;
 }
 
 export interface Player {
@@ -160,6 +168,8 @@ export interface Outcome {
   strikesAfter: number;
   statusAfter: PlayerStatus;
   revived: boolean;
+  /** 맛보기 문제라 틀려도 그냥 넘어갔는가 */
+  practice?: boolean;
 }
 
 export interface PlayerSnapshot {
@@ -191,6 +201,8 @@ export interface Room {
   deadlineAt: number | null;
   /** QUESTION_SHOWN에서 타이머가 자동 시작될 서버 시각(ms). 수동 모드면 null */
   autoStartAt: number | null;
+  /** LOBBY에서 입장이 자동 마감될 서버 시각(ms). 카운트다운 중이 아니면 null. 이 동안에도 입장은 열려 있다 */
+  lockAt: number | null;
   /** 생존자가 결승 인원 이하인데 부활전을 아직 안 열어, 다음 단계가 패자부활전이어야 하는 상태 */
   pendingRevival: boolean;
   /** REVEALED에서 결승 진출자 발표(ENDED)로 자동 전환될 서버 시각(ms) */
@@ -226,6 +238,7 @@ export interface RoomStateForPlayer {
   question: QuestionPublic | null;
   deadline: number | null;
   autoStartAt: number | null;
+  lockAt: number | null;
   pendingRevival: boolean;
   finaleAt: number | null;
   /** ENDED에서 내가 결승 진출자인가 */
@@ -251,6 +264,7 @@ export interface RoomStateForScreen {
   question: QuestionPublic | null;
   deadline: number | null;
   autoStartAt: number | null;
+  lockAt: number | null;
   pendingRevival: boolean;
   finaleAt: number | null;
   /** ENDED이고 생존자가 결승 인원 이하일 때만 채움 */

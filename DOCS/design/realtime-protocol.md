@@ -47,6 +47,8 @@ related: ["[[game-flow]]", "[[data-model]]", "[[ADR-0001-realtime-socketio]]"]
 | `time:pong` | 소켓 1개 | `{ clientSent, serverNow }` | `time:ping` 응답 |
 | `lobby:playerJoined` | `screen`, `host` | `{ player: PublicPlayer }` | 새 참가자 등록 |
 | `player:connection` | `screen`, `host` | `{ playerId, connected }` | 소켓 연결/끊김 |
+| `room:locking` | 전체 | `{ lockAt, serverNow }` | 입장 마감 카운트다운 시작. 스크린은 큰 숫자, 폰은 "입장 마감까지 N초" |
+| `room:lockCancelled` | 전체 | `{}` | 사회자가 카운트다운 취소 |
 | `room:locked` | 전체 | `{ playerCount }` | 입장 마감 |
 | `question:show` | 전체 | `{ index, total, mode: "NORMAL" \| "REVIVAL", eligible: "ACTIVE" \| "WAITING", liveMoves: boolean, autoStartAt: number \| null, question }` | 문제 공개. `mode`로 스크린은 무대 교대 여부를, 폰은 자기 답변 자격을 판단. `liveMoves`가 false면 스크린은 숨김 모드 자막을 띄움. `autoStartAt`(서버 절대 시각)이 있으면 그때 타이머가 자동 시작되므로 화면은 3·2·1 카운트를 그림. **정답은 절대 포함하지 않음** (사회자 룸만 `answer` 필드 추가) |
 | `question:start` | 전체 | `{ index, deadline }` | 타이머 시작. `deadline`은 서버 절대 시각(ms) |
@@ -95,7 +97,9 @@ type RoomStateForHost = RoomStateForScreen & { questions: Question[]; currentInd
 |---|---|---|---|
 | `time:ping` | 전체 | `{ clientSent }` | 즉시 `time:pong` |
 | `answer:choose` | 참가자 | `{ index, choice: "O" \| "X" }` | 상태 `ANSWERING`, `now ≤ deadline + grace`, 참가자가 이번 라운드 자격자(`NORMAL`→`ACTIVE`, `REVIVAL`→`WAITING`)인지 확인 → 저장, `answer:moved`·`answer:ack` 발송. 자격 없으면 무시(ack 없음). 300ms 안에 반복 오면 무시 |
-| `host:lock` / `host:unlock` | 사회자 | — | `LOBBY ↔ LOCKED`. unlock은 `LOCKED`에서만 |
+| `host:lock` | 사회자 | — | `LOBBY`에서 첫 호출은 마감 카운트다운 시작(`lockCountdownSec`, 기본 10초) → `room:locking`. 카운트다운 중 다시 호출하면 즉시 `LOCKED`. 카운트다운 0이면 처음부터 즉시 마감. **카운트다운 동안에도 입장은 열려 있다** |
+| `host:cancelLock` | 사회자 | — | 카운트다운 취소 → `room:lockCancelled`. 카운트다운 중이 아니면 거절 |
+| `host:unlock` | 사회자 | — | `LOCKED` → `LOBBY` |
 | `host:showQuestion` | 사회자 | `{ index?, mode? }` | 기본은 다음 미출제 문제를 `NORMAL`로. 특정 문제로 건너뛰기 허용. `mode` 생략 시 문제의 `kind`를 따름 |
 | `host:startRevival` | 사회자 | `{ index?, force? }` | `REVEALED`에서만, `WAITING` 1명 이상일 때만. `kind = REVIVAL`인 다음 미출제 문제(없으면 지정 문제)를 `REVIVAL` 모드로 `QUESTION_SHOWN`. 이미 한 번 열었으면(`revival_used_count ≥ 1`) `force: true`가 없으면 거절. 조건 미충족 시 `host:alert` |
 | `host:startTimer` | 사회자 | `{ seconds? }` | 문제 기본 제한시간 또는 지정값으로 마감 시각 계산 |
@@ -108,7 +112,7 @@ type RoomStateForHost = RoomStateForScreen & { questions: Question[]; currentInd
 | `host:end` | 사회자 | — | 강제 종료 |
 | `host:setWinner` | 사회자 | `{ playerId }` | `ENDED`에서만, 생존자 중 한 명 → `game:winner`. 다시 보내면 교체 |
 | `host:restore` / `host:kick` | 사회자 | `{ playerId }` | 참가자 수동 개입 |
-| `chat:send` | 참가자 | `{ text }` (200자까지 받고 서버가 60자로 자름) | 채팅 전송. `chatEnabled`가 꺼져 있거나 탈락자면 무시. 같은 사람은 1.5초에 1회. 보이지 않는 문자·연속 공백을 정리해 빈 문자열이 되면 무시 |
+| `chat:send` | 참가자 | `{ text }` (200자까지 받고 서버가 60자로 자름) | 채팅 전송. `chatEnabled`가 꺼져 있거나 탈락자면 무시. 같은 사람은 1.5초에 1회. 보이지 않는 문자·연속 공백을 정리해 빈 문자열이 되면 무시. **욕설은 ●로 가려 내보내고**(공백·기호·숫자를 끼운 우회도 정규화해 검사), 가린 뒤 남는 글자가 없으면 전달하지 않는다 |
 | `chat:sync` | 전체 | — | 최근 채팅 기록을 다시 요청(`chat:history`로 응답). 채팅 UI가 늦게 마운트되어 접속 직후 기록을 놓쳤을 때 |
 | `host:chatDelete` | 사회자 | `{ id }` | 메시지 1건 삭제 → 전원에게 `chat:deleted` |
 | `host:chatClear` | 사회자 | — | 채팅 기록 전체 삭제 → 전원에게 `chat:cleared` |

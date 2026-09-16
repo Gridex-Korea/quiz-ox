@@ -93,6 +93,10 @@ erDiagram
 | `finale_at` | INTEGER | NULL 허용 | 결승 발표(ENDED) 자동 전환 예정 시각. 재시작 시 신뢰하지 않음(예약 자체는 메모리) |
 | `config.finalistThreshold` | (config JSON) | 기본 3 | 결승 진출 인원. 0이면 규칙 끔 |
 | `config.chatEnabled` | (config JSON) | 기본 true | 참가자 채팅 허용. 채팅 내용 자체는 저장하지 않고 서버 메모리에 최근 200건만 둔다 |
+| `config.lockCountdownSec` | (config JSON) | 기본 10 | 입장 마감 카운트다운(초). 0이면 즉시 마감 |
+| `config.practiceUntilOrderNo` | (config JSON) | 기본 0 | 이 order_no까지는 맛보기 문제(틀려도 스트라이크 없음). -1이면 맛보기 없음 |
+| `config.answerGraceMs` | (config JSON) | 기본 1000 | 마감 유예. 서버는 이만큼 기다렸다가 집계한다 |
+| `lock_at` | (저장 안 함) | — | 마감 카운트다운 예정 시각. 예약이 메모리에만 있어 재시작하면 null |
 | `winner_player_id` | TEXT | NULL 허용, FK players | 오프라인 결승 뒤 사회자가 지정한 우승자. `ENDED`에서만 채움 |
 | `created_at`, `updated_at` | TEXT | ISO 8601 | |
 

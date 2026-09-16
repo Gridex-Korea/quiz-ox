@@ -16,8 +16,10 @@ function run(state: RoomState, cmd: Command, now = T0) {
   return r;
 }
 
-function setup(nPlayers = 4, opts: { liveUntil?: number } = {}) {
+function setup(nPlayers = 4, opts: { liveUntil?: number; practiceUntil?: number } = {}) {
   let s = createInitialState(T0);
+  // 대부분의 테스트는 일반 판정을 검증하므로 맛보기를 꺼 둔다(맛보기 테스트만 켠다)
+  s = run(s, { type: 'updateConfig', patch: { practiceUntilOrderNo: opts.practiceUntil ?? -1 } }).state;
   if (opts.liveUntil !== undefined) s = run(s, { type: 'updateConfig', patch: { liveMovesUntilOrderNo: opts.liveUntil } }).state;
   s = run(s, {
     type: 'questionsReplace',
@@ -35,7 +37,8 @@ function setup(nPlayers = 4, opts: { liveUntil?: number } = {}) {
     s = r.state;
     ids.push(r.registered!.playerId);
   }
-  s = run(s, { type: 'lock' }).state;
+  s = run(s, { type: 'lock' }).state; // 카운트다운 시작
+  s = run(s, { type: 'lock' }).state; // 다시 눌러 즉시 마감
   return { s, ids };
 }
 
@@ -121,14 +124,19 @@ describe('일반 라운드 판정', () => {
     expect((show.find((e) => e.to === 'players')!.payload as { answer?: string }).answer).toBeUndefined();
   });
 
-  it('마감 유예 안에 온 답은 인정, 그 뒤는 거절', () => {
+  it('마감 유예(1초) 안에 온 답은 인정, 그 뒤는 거절. 집계도 유예 뒤에 한다', () => {
     const { s, ids } = setup(1);
     let r = run(s, { type: 'showQuestion' });
     r = run(r.state, { type: 'startTimer' }, T0);
     const deadline = r.state.room.deadlineAt!;
-    const inGrace = reduce(r.state, { type: 'choose', playerId: ids[0]!, index: 0, choice: 'O' }, deadline + 200);
+    // 화면에는 deadline을 보내지만, 서버 집계 타이머는 유예만큼 뒤에 잡힌다
+    const timer = r.effects.find((e) => e.type === 'timer:set');
+    expect(timer).toEqual({ type: 'timer:set', deadline: deadline + 1000 });
+    expect((broadcasts(r.effects, S2C.questionStart)[0]!.payload as { deadline: number }).deadline).toBe(deadline);
+
+    const inGrace = reduce(r.state, { type: 'choose', playerId: ids[0]!, index: 0, choice: 'O' }, deadline + 900);
     expect(inGrace.error).toBeUndefined();
-    const late = reduce(r.state, { type: 'choose', playerId: ids[0]!, index: 0, choice: 'O' }, deadline + 400);
+    const late = reduce(r.state, { type: 'choose', playerId: ids[0]!, index: 0, choice: 'O' }, deadline + 1200);
     expect(late.error).toBe('too_late');
   });
 
@@ -155,6 +163,51 @@ describe('일반 라운드 판정', () => {
     round = playRound(round.s, ids, ['O']); // Q1 정답 X → 2스트라이크... 하지만 WAITING은 일반 라운드 자격이 없다
     expect(round.s.players[ids[0]!]!.status).toBe('WAITING');
     expect(round.s.players[ids[0]!]!.strikes).toBe(1);
+  });
+});
+
+describe('맛보기 문제', () => {
+  it('1번 문제(기본)는 틀려도 아무도 떨어지지 않고, 2번부터는 평소대로다', () => {
+    const { s, ids } = setup(3, { practiceUntil: 0 });
+    // Q0 정답 O: 두 명이 틀려도 스트라이크 0, 전원 ACTIVE
+    const first = playRound(s, ids, ['O', 'X', undefined]);
+    expect(first.s.players[ids[1]!]).toMatchObject({ status: 'ACTIVE', strikes: 0 });
+    expect(first.s.players[ids[2]!]).toMatchObject({ status: 'ACTIVE', strikes: 0 });
+    const outcomes = (broadcasts(first.effects, S2C.questionReveal)[0]!.payload as { outcomes: { practice?: boolean; correct: boolean }[] }).outcomes;
+    expect(outcomes.every((o) => o.practice === true)).toBe(true);
+    expect(outcomes.filter((o) => !o.correct)).toHaveLength(2);
+    // 화면에도 맛보기임을 알린다
+    expect((broadcasts(first.effects, S2C.questionShow)[0]!.payload as { question: { practice: boolean } }).question.practice).toBe(true);
+
+    // Q1은 일반 문제 → 틀리면 대기실
+    const second = playRound(first.s, ids, ['X', 'O', undefined]); // 정답 X
+    expect(second.s.players[ids[0]!]).toMatchObject({ status: 'ACTIVE', strikes: 0 });
+    expect(second.s.players[ids[1]!]).toMatchObject({ status: 'WAITING', strikes: 1 });
+    expect(second.s.players[ids[2]!]).toMatchObject({ status: 'WAITING', strikes: 1 });
+    expect((broadcasts(second.effects, S2C.questionShow)[0]!.payload as { question: { practice: boolean } }).question.practice).toBe(false);
+  });
+
+  it('맛보기를 끄면 1번 문제도 평소대로 판정한다', () => {
+    const { s, ids } = setup(2, { practiceUntil: -1 });
+    const r = playRound(s, ids, ['O', 'X']);
+    expect(r.s.players[ids[1]!]).toMatchObject({ status: 'WAITING', strikes: 1 });
+  });
+
+  it('패자부활전은 맛보기가 되지 않는다', () => {
+    // 맛보기 범위를 넓혀도 REVIVAL 모드면 정상 판정
+    const { s, ids } = setup(3, { practiceUntil: 99 });
+    const first = playRound(s, ids, ['O', 'O', 'O']);
+    expect(Object.values(first.s.players).every((p) => p.strikes === 0)).toBe(true);
+    // 대기실을 만들기 위해 수동으로 한 명 내림
+    const withWaiting = run(first.s, { type: 'kick', playerId: ids[2]! }).state;
+    const restored = run(withWaiting, { type: 'restore', playerId: ids[2]! }).state;
+    expect(restored.players[ids[2]!]!.status).toBe('WAITING');
+    let r = run(restored, { type: 'startRevival' });
+    r = run(r.state, { type: 'startTimer' }, T0);
+    r = run(r.state, { type: 'timeUp' }, T0 + 20_000);
+    r = run(r.state, { type: 'reveal' }, T0 + 21_000);
+    // 부활전 미응답 → 맛보기 설정과 무관하게 스트라이크가 오른다
+    expect(r.state.players[ids[2]!]!.strikes).toBeGreaterThan(restored.players[ids[2]!]!.strikes);
   });
 });
 
@@ -275,6 +328,71 @@ describe('패자부활전', () => {
     }
     expect(cur.room.currentIndex).toBe(4);
     expect(shouldSuggestRevival(cur)).toBe(true);
+  });
+});
+
+describe('입장 마감 카운트다운', () => {
+  function lobbyWithPlayers(n = 2) {
+    let s = createInitialState(T0);
+    s = run(s, { type: 'questionsReplace', questions: [q('Q0', 'O')] }).state;
+    for (let i = 0; i < n; i++) {
+      s = run(s, { type: 'registerPlayer', phone: `0101111000${i}`, name: `P${i}`, avatar: { body: 0, face: 0, hair: 0 }, tokenHash: `h${i}` }).state;
+    }
+    return s;
+  }
+
+  it('처음 누르면 카운트다운만 시작하고 입장은 계속 열려 있다', () => {
+    const s = lobbyWithPlayers();
+    const r = run(s, { type: 'lock' });
+    expect(r.state.room.status).toBe('LOBBY');
+    expect(r.state.room.lockAt).toBe(T0 + 10_000);
+    expect(r.effects.find((e) => e.type === 'schedule' && e.key === 'lock')).toMatchObject({
+      at: T0 + 10_000,
+      command: { type: 'lock' },
+      onlyIf: { status: 'LOBBY', index: -1 },
+    });
+    expect(broadcasts(r.effects, S2C.roomLocking)[0]!.payload).toMatchObject({ lockAt: T0 + 10_000 });
+    expect(screenView(r.state, T0, 'u').lockAt).toBe(T0 + 10_000);
+    // 카운트다운 중에도 새 참가자가 들어올 수 있다
+    const late = reduce(r.state, { type: 'registerPlayer', phone: '01099998888', name: '막차', avatar: { body: 0, face: 0, hair: 0 }, tokenHash: 'z' }, T0 + 3000);
+    expect(late.error).toBeUndefined();
+    expect(late.registered?.kind).toBe('created');
+  });
+
+  it('카운트다운 중 다시 누르면 즉시 마감된다', () => {
+    const counting = run(lobbyWithPlayers(), { type: 'lock' }).state;
+    const now = run(counting, { type: 'lock' }, T0 + 4000);
+    expect(now.state.room.status).toBe('LOCKED');
+    expect(now.state.room.lockAt).toBeNull();
+    expect(now.effects.some((e) => e.type === 'unschedule' && e.key === 'lock')).toBe(true);
+    expect(broadcasts(now.effects, S2C.roomLocked)).toHaveLength(1);
+    // 마감 뒤에는 신규 입장 거절
+    expect(reduce(now.state, { type: 'registerPlayer', phone: '01099998888', name: '늦은이', avatar: { body: 0, face: 0, hair: 0 }, tokenHash: 'z' }, T0).error).toBe('locked');
+  });
+
+  it('마감 취소는 카운트다운만 되돌리고, 카운트다운이 없으면 거절한다', () => {
+    const s = lobbyWithPlayers();
+    expect(reduce(s, { type: 'cancelLock' }, T0).error).toBe('invalid_state');
+    const counting = run(s, { type: 'lock' }).state;
+    const cancelled = run(counting, { type: 'cancelLock' }, T0 + 2000);
+    expect(cancelled.state.room.status).toBe('LOBBY');
+    expect(cancelled.state.room.lockAt).toBeNull();
+    expect(cancelled.effects.some((e) => e.type === 'unschedule' && e.key === 'lock')).toBe(true);
+    expect(broadcasts(cancelled.effects, S2C.roomLockCancelled)).toHaveLength(1);
+  });
+
+  it('카운트다운을 0으로 두면 누르는 즉시 마감된다', () => {
+    const s = run(lobbyWithPlayers(), { type: 'updateConfig', patch: { lockCountdownSec: 0 } }).state;
+    const r = run(s, { type: 'lock' });
+    expect(r.state.room.status).toBe('LOCKED');
+    expect(r.state.room.lockAt).toBeNull();
+  });
+
+  it('입장을 다시 열면 카운트다운 흔적이 남지 않는다', () => {
+    const locked = run(run(lobbyWithPlayers(), { type: 'lock' }).state, { type: 'lock' }, T0 + 1000).state;
+    const reopened = run(locked, { type: 'unlock' });
+    expect(reopened.state.room.status).toBe('LOBBY');
+    expect(reopened.state.room.lockAt).toBeNull();
   });
 });
 

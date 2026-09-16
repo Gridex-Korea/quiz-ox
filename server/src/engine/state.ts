@@ -24,6 +24,7 @@ export function createRoom(now: number, config: Partial<RoomConfig> = {}): Room 
     currentIndex: -1,
     deadlineAt: null,
     autoStartAt: null,
+    lockAt: null,
     pendingRevival: false,
     finaleAt: null,
     revivalUsedCount: 0,

@@ -100,8 +100,10 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   const lastSlots = useRef(new Map<string, Slot>());
   const lastTick = useRef<number>(-1);
   const lastPre = useRef<number>(-1);
+  const lastLock = useRef<number>(-1);
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
   const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
+  const lockIn = useCountdown(view.status === 'LOBBY' ? view.lockAt : null, room.now);
 
   // 카운트다운 마지막 5초 틱
   useEffect(() => {
@@ -125,6 +127,19 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       play('tick');
     }
   }, [pre]);
+
+  // 입장 마감 카운트다운: 마지막 5초만 틱
+  useEffect(() => {
+    if (lockIn === null) {
+      lastLock.current = -1;
+      return;
+    }
+    const sec = Math.ceil(lockIn / 1000);
+    if (sec > 0 && sec <= 5 && sec !== lastLock.current) {
+      lastLock.current = sec;
+      play('tick');
+    }
+  }, [lockIn]);
 
   // 이벤트 기반 연출
   useEffect(() => {
@@ -272,14 +287,22 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       {inRound && isRevival && view.status !== 'REVEALED' && (
         <div className="s-banner revival">🔥 패자부활전 · 대기실 {stageCounts.waiting}명 도전 · 맞히면 무대 복귀, 틀리면 탈락</div>
       )}
-      {inRound && !isRevival && !view.liveMoves && view.status !== 'REVEALED' && <div className="s-banner hidden-mode">🙈 이번 문제부터 선택은 마감 후 공개됩니다</div>}
+      {inRound && view.question?.practice && view.status !== 'REVEALED' && (
+        <div className="s-banner practice">🎈 맛보기 문제 · 틀려도 탈락하지 않습니다</div>
+      )}
+      {view.status === 'REVEALED' && view.question?.practice && <div className="s-banner practice">🎈 맛보기 문제였습니다 · 모두 통과!</div>}
+      {inRound && !isRevival && !view.question?.practice && !view.liveMoves && view.status !== 'REVEALED' && (
+        <div className="s-banner hidden-mode">🙈 이번 문제부터 선택은 마감 후 공개됩니다</div>
+      )}
       {view.status === 'REVEALED' && view.pendingRevival && (
         <div className="s-banner revival">🔥 무대 생존자 {stageCounts.active}명! 잠시 후 패자부활전이 시작됩니다</div>
       )}
       {view.status === 'REVEALED' && view.finaleAt && !view.pendingRevival && (
         <div className="s-banner finale">🎉 결승 진출자 확정! 잠시 후 발표합니다</div>
       )}
-      {view.status === 'REVEALED' && view.question?.explanation && !view.pendingRevival && !view.finaleAt && <div className="s-banner explain">{view.question.explanation}</div>}
+      {view.status === 'REVEALED' && view.question?.explanation && !view.pendingRevival && !view.finaleAt && !view.question.practice && (
+        <div className="s-banner explain">{view.question.explanation}</div>
+      )}
 
       {/* 사진 문제 */}
       {questionImage && (
@@ -308,7 +331,7 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       )}
 
       {/* 로비 */}
-      {(view.status === 'LOBBY' || view.status === 'LOCKED') && <LobbyPanel view={view} />}
+      {(view.status === 'LOBBY' || view.status === 'LOCKED') && <LobbyPanel view={view} lockIn={lockIn} />}
 
       {/* 아바타 */}
       <div className="sprites">
@@ -449,12 +472,13 @@ function Sprite({
   );
 }
 
-function LobbyPanel({ view }: { view: RoomStateForScreen }) {
+function LobbyPanel({ view, lockIn }: { view: RoomStateForScreen; lockIn: number | null }) {
   const [qr, setQr] = useState<string | null>(null);
   useEffect(() => {
     QRCode.toDataURL(view.joinUrl, { width: 420, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } }).then(setQr).catch(() => setQr(null));
   }, [view.joinUrl]);
   const url = view.joinUrl.replace(/^https?:\/\//, '');
+  const sec = lockIn !== null ? Math.ceil(lockIn / 1000) : null;
   return (
     <div className="lobby">
       <div className="lobby-card">
@@ -468,6 +492,14 @@ function LobbyPanel({ view }: { view: RoomStateForScreen }) {
           </p>
         </div>
       </div>
+      {sec !== null && sec > 0 && (
+        <div className="lock-countdown">
+          <div className="lock-label">곧 입장이 마감됩니다 · 지금 들어오세요!</div>
+          <div className={`lock-number ${sec <= 5 ? 'urgent' : ''}`} key={sec}>
+            {sec}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

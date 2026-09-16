@@ -6,6 +6,11 @@ export function isLiveMoves(config: RoomConfig, index: number): boolean {
   return index <= config.liveMovesUntilOrderNo;
 }
 
+/** 맛보기 문제인가: 틀려도 스트라이크가 오르지 않는다. 패자부활전은 맛보기가 될 수 없다 */
+export function isPractice(config: RoomConfig, index: number, mode: RoundMode): boolean {
+  return mode === 'NORMAL' && index <= config.practiceUntilOrderNo;
+}
+
 /** 라운드 모드별 답변 자격 상태 */
 export function eligibleStatus(mode: RoundMode): PlayerStatus {
   return mode === 'REVIVAL' ? 'WAITING' : 'ACTIVE';

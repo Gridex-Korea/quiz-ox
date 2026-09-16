@@ -31,7 +31,8 @@ function sampleState(): RoomState {
     s = step(r);
     ids.push(r.registered!.playerId);
   }
-  s = step(reduce(s, { type: 'lock' }, T0));
+  s = step(reduce(s, { type: 'lock' }, T0)); // 카운트다운 시작
+  s = step(reduce(s, { type: 'lock' }, T0)); // 다시 눌러 즉시 마감
   s = step(reduce(s, { type: 'showQuestion' }, T0));
   s = step(reduce(s, { type: 'startTimer' }, T0));
   s = step(reduce(s, { type: 'choose', playerId: ids[0]!, index: 0, choice: 'O' }, T0 + 1000));
@@ -42,15 +43,21 @@ function sampleState(): RoomState {
 }
 
 describe('Store', () => {
-  it('저장 후 불러오면 같은 상태(currentAnswers 제외)', () => {
+  it('저장 후 불러오면 같은 상태(currentAnswers와 메모리 전용 예약 제외)', () => {
     const store = new Store(':memory:');
     const state = sampleState();
     store.save(state);
     const loaded = store.load();
     expect(loaded).not.toBeNull();
-    const { currentAnswers: _a, ...expected } = state;
-    const { currentAnswers: _b, ...actual } = loaded!;
-    expect(actual).toEqual(expected);
+    // 예약(자동 시작·입장 마감·결승 전환)은 setTimeout에만 있으므로 복원하지 않는다
+    expect(loaded!.room.autoStartAt).toBeNull();
+    expect(loaded!.room.lockAt).toBeNull();
+    expect(loaded!.room.finaleAt).toBeNull();
+    const strip = (s: typeof state) => {
+      const { currentAnswers: _a, ...rest } = s;
+      return { ...rest, room: { ...rest.room, autoStartAt: null, lockAt: null, finaleAt: null } };
+    };
+    expect(strip(loaded!)).toEqual(strip(state));
     expect(loaded!.currentAnswers).toEqual({});
     store.close();
   });

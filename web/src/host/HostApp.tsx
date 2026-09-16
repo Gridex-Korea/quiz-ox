@@ -148,6 +148,7 @@ function Console({
   const remaining = useCountdown(view.status === 'ANSWERING' ? view.deadline : null, room.now);
   const pre = useCountdown(view.status === 'QUESTION_SHOWN' ? view.autoStartAt : null, room.now);
   const finaleIn = useCountdown(view.status === 'REVEALED' ? view.finaleAt : null, room.now);
+  const lockIn = useCountdown(view.status === 'LOBBY' ? view.lockAt : null, room.now);
   const counts = useMemo(() => {
     const c: Record<string, number> = { ACTIVE: 0, WAITING: 0, ELIMINATED: 0 };
     for (const p of view.players) c[p.status] = (c[p.status] ?? 0) + 1;
@@ -175,7 +176,13 @@ function Console({
   const primary = (() => {
     switch (view.status) {
       case 'LOBBY':
-        return { label: `입장 마감 (${view.players.length}명)`, onClick: () => emit(C2S.hostLock), disabled: view.players.length === 0 };
+        return view.lockAt
+          ? { label: `${lockIn !== null ? Math.ceil(lockIn / 1000) : 0}초 뒤 마감 · 지금 마감 (${view.players.length}명)`, onClick: () => emit(C2S.hostLock), disabled: false }
+          : {
+              label: view.config.lockCountdownSec > 0 ? `입장 마감 카운트다운 (${view.players.length}명)` : `입장 마감 (${view.players.length}명)`,
+              onClick: () => emit(C2S.hostLock),
+              disabled: view.players.length === 0,
+            };
       case 'LOCKED':
         return { label: nextNormal ? `첫 문제 공개 · Q${nextNormal.orderNo + 1}` : '문제를 먼저 등록하세요', onClick: () => emit(C2S.hostShowQuestion, {}), disabled: !nextNormal };
       case 'QUESTION_SHOWN':
@@ -245,6 +252,7 @@ function Console({
                 <span className="muted">
                   {view.mode === 'REVIVAL' ? '패자부활전 · ' : ''}Q{view.question.index + 1} / {view.question.total}
                   {view.liveMoves ? ' · 이동 실시간' : ' · 이동 숨김'}
+                  {view.question.practice ? ' · 🎈 맛보기(틀려도 통과)' : ''}
                 </span>
                 {question && <span className={`badge ${question.answer === 'O' ? 'o' : 'x'}`}>정답 {question.answer} (스크린엔 안 보임)</span>}
               </div>
@@ -269,6 +277,11 @@ function Console({
           </button>
 
           <div className="subactions">
+            {view.status === 'LOBBY' && view.lockAt && (
+              <button className="ghost small" onClick={() => emit(C2S.hostCancelLock)}>
+                마감 취소
+              </button>
+            )}
             {view.status === 'LOCKED' && (
               <button className="ghost small" onClick={() => emit(C2S.hostUnlock)}>
                 입장 다시 열기
@@ -752,7 +765,25 @@ function Settings({ view, emit, token, toast }: { view: RoomStateForHost; emit: 
             결승 진출 인원(이하가 되면 축하 화면, 0이면 끔)
             <input type="number" min={0} max={20} value={cfg.finalistThreshold} onChange={(e) => setCfg({ ...cfg, finalistThreshold: Number(e.target.value) })} />
           </label>
+          <label>
+            입장 마감 카운트다운(초, 0이면 즉시)
+            <input type="number" min={0} max={60} value={cfg.lockCountdownSec} disabled={inGame} onChange={(e) => setCfg({ ...cfg, lockCountdownSec: Number(e.target.value) })} />
+          </label>
+          <label>
+            맛보기 문제: N번까지 (0이면 없음)
+            <input
+              type="number"
+              min={0}
+              max={999}
+              value={cfg.practiceUntilOrderNo + 1}
+              disabled={inGame}
+              onChange={(e) => setCfg({ ...cfg, practiceUntilOrderNo: Number(e.target.value) - 1 })}
+            />
+          </label>
         </div>
+        <p className="muted" style={{ margin: 0 }}>
+          맛보기 문제는 틀려도 스트라이크가 오르지 않아 아무도 떨어지지 않습니다. 참가자가 규칙과 버튼을 익히는 라운드입니다.
+        </p>
         <p className="muted" style={{ margin: 0 }}>
           생존자가 결승 인원 이하가 되면: 패자부활전을 아직 안 열었고 대기실이 있으면 부활전을 먼저 제안하고, 그 뒤 6초 후 결승 진출자(이름·뒷번호 4자리) 축하 화면으로 넘어갑니다. 결승은 무대에서 진행하고 우승자를 지정하세요.
         </p>

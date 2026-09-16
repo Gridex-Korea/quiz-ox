@@ -8,6 +8,7 @@ import {
   eligibleStatus,
   findQuestion,
   isLiveMoves,
+  isPractice,
   nextNormalQuestion,
   nextRevivalQuestion,
   type AvatarSpec,
@@ -28,7 +29,7 @@ import {
 import { cloneState, createRoom, newId, snapshotPlayers } from './state';
 
 export type Target = 'all' | 'players' | 'screen' | 'host' | 'screenHost';
-export type ScheduleKey = 'autostart' | 'finale';
+export type ScheduleKey = 'autostart' | 'finale' | 'lock';
 
 export type Effect =
   | { type: 'broadcast'; to: Target; event: string; payload: unknown }
@@ -58,6 +59,7 @@ export type Command =
   | { type: 'rotateToken'; playerId: string; tokenHash: string }
   | { type: 'setConnected'; playerId: string; connected: boolean }
   | { type: 'lock' }
+  | { type: 'cancelLock' }
   | { type: 'unlock' }
   | { type: 'showQuestion'; index?: number; mode?: RoundMode }
   | { type: 'startRevival'; index?: number; force?: boolean }
@@ -124,6 +126,7 @@ export function questionPublic(state: RoomState, q: Question, includeExplanation
     imageUrl: q.imageUrl,
     timeLimitSec: effectiveTimeLimit(q, state.room.config),
     explanation: includeExplanation ? q.explanation : null,
+    practice: isPractice(state.room.config, q.orderNo, state.room.roundMode ?? 'NORMAL'),
   };
 }
 
@@ -177,16 +180,41 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
     }
     case 'lock': {
       if (state.room.status !== 'LOBBY') return fail(prev, 'invalid_state');
+      const seconds = state.room.config.lockCountdownSec;
+      // 카운트다운 중에 다시 누르면 즉시 마감. 그 전에는 카운트다운만 시작하고 입장은 계속 열어 둔다
+      if (state.room.lockAt === null && seconds > 0) {
+        const lockAt = now + seconds * 1000;
+        state.room.lockAt = lockAt;
+        touch(state, now);
+        return ok(state, [
+          { type: 'schedule', key: 'lock', at: lockAt, command: { type: 'lock' }, onlyIf: { status: 'LOBBY', index: state.room.currentIndex } },
+          { type: 'broadcast', to: 'all', event: S2C.roomLocking, payload: { lockAt, serverNow: now } },
+          { type: 'stateChanged' },
+        ]);
+      }
       state.room.status = 'LOCKED';
+      state.room.lockAt = null;
       touch(state, now);
       return ok(state, [
+        { type: 'unschedule', key: 'lock' },
         { type: 'broadcast', to: 'all', event: S2C.roomLocked, payload: { playerCount: Object.keys(state.players).length } },
+        { type: 'stateChanged' },
+      ]);
+    }
+    case 'cancelLock': {
+      if (state.room.status !== 'LOBBY' || state.room.lockAt === null) return fail(prev, 'invalid_state');
+      state.room.lockAt = null;
+      touch(state, now);
+      return ok(state, [
+        { type: 'unschedule', key: 'lock' },
+        { type: 'broadcast', to: 'all', event: S2C.roomLockCancelled, payload: {} },
         { type: 'stateChanged' },
       ]);
     }
     case 'unlock': {
       if (state.room.status !== 'LOCKED') return fail(prev, 'invalid_state');
       state.room.status = 'LOBBY';
+      state.room.lockAt = null;
       touch(state, now);
       return ok(state, [{ type: 'broadcast', to: 'all', event: S2C.roomUnlocked, payload: {} }, { type: 'stateChanged' }]);
     }
@@ -213,7 +241,8 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       touch(state, now);
       return ok(state, [
         { type: 'unschedule', key: 'autostart' },
-        { type: 'timer:set', deadline },
+        // 화면 카운트다운은 deadline에 0이 되지만, 늦게 도착한 답을 받아 주기 위해 집계는 유예 뒤에 한다
+        { type: 'timer:set', deadline: deadline + state.room.config.answerGraceMs },
         { type: 'broadcast', to: 'all', event: S2C.questionStart, payload: { index: q.orderNo, deadline, serverNow: now } },
         { type: 'stateChanged' },
       ]);
@@ -225,7 +254,7 @@ export function reduce(prev: RoomState, cmd: Command, now: number): Result {
       state.room.deadlineAt = deadline;
       touch(state, now);
       return ok(state, [
-        { type: 'timer:set', deadline },
+        { type: 'timer:set', deadline: deadline + state.room.config.answerGraceMs },
         { type: 'broadcast', to: 'all', event: S2C.questionExtended, payload: { deadline, serverNow: now } },
         { type: 'stateChanged' },
       ]);
@@ -614,6 +643,8 @@ function timeUp(state: RoomState, prev: RoomState, now: number): Result {
 export function judge(state: RoomState, q: Question): { outcomes: Outcome[]; newlyEliminated: string[] } {
   const mode = state.room.roundMode ?? 'NORMAL';
   const { maxStrikes } = state.room.config;
+  // 맛보기 문제(기본 1번)는 틀려도 아무도 떨어지지 않는다. 규칙을 몸으로 익히게 하는 라운드
+  const practice = isPractice(state.room.config, q.orderNo, mode);
   const outcomes: Outcome[] = [];
   const newlyEliminated: string[] = [];
   for (const p of eligiblePlayers(state)) {
@@ -626,7 +657,7 @@ export function judge(state: RoomState, q: Question): { outcomes: Outcome[]; new
         p.revivedAtIndex = q.orderNo;
         revived = true;
       }
-    } else {
+    } else if (!practice) {
       p.strikes += 1;
       if (p.strikes >= maxStrikes) {
         p.status = 'ELIMINATED';
@@ -638,7 +669,7 @@ export function judge(state: RoomState, q: Question): { outcomes: Outcome[]; new
     }
     const rec = state.answers[q.id]?.[p.id];
     if (rec) rec.isCorrect = correct;
-    outcomes.push({ playerId: p.id, choice, correct, strikesAfter: p.strikes, statusAfter: p.status, revived });
+    outcomes.push({ playerId: p.id, choice, correct, strikesAfter: p.strikes, statusAfter: p.status, revived, practice });
   }
   return { outcomes, newlyEliminated };
 }

@@ -1,6 +1,7 @@
 // 참가자 채팅. 저장하지 않고 메모리에 최근 메시지만 둔다. 검증·정리·속도 제한을 여기서 한다.
 import { randomUUID } from 'node:crypto';
 import { CHAT_HISTORY_LIMIT, CHAT_MAX_LENGTH, CHAT_MIN_INTERVAL_MS, type ChatMessage, type Player } from '@ox/shared';
+import { filterProfanity } from './profanity';
 
 /** 보이지 않는 문자(제어·zero-width·줄 구분자·BOM)인가. 정규식 이스케이프 대신 코드값으로 판단한다 */
 function isInvisible(code: number): boolean {
@@ -22,10 +23,13 @@ export class ChatRoom {
   private log: ChatMessage[] = [];
   private lastAt = new Map<string, number>();
 
-  /** 성공하면 메시지, 속도 제한·빈 문자열이면 null */
+  /** 성공하면 메시지, 속도 제한·빈 문자열·전부 욕설이면 null */
   post(player: Player, raw: string, now = Date.now()): ChatMessage | null {
-    const text = sanitizeChat(raw);
-    if (!text) return null;
+    const clean = sanitizeChat(raw);
+    if (!clean) return null;
+    const { text } = filterProfanity(clean);
+    // 가리고 나서 남는 글자가 없으면 아예 보내지 않는다
+    if (!text.replace(/●/g, '').trim()) return null;
     // 처음 보내는 사람은 제한 없음(기본값 0을 쓰면 서버 시각이 작은 테스트·리허설에서 막힌다)
     const last = this.lastAt.get(player.id);
     if (last !== undefined && now - last < CHAT_MIN_INTERVAL_MS) return null;

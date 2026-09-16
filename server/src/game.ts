@@ -32,8 +32,9 @@ export class GameService {
 
   attach(emitter: Emitter): void {
     this.emitter = emitter;
-    // 재시작 직후에는 예약(자동 시작·결승 전환)이 사라졌으므로 사회자가 직접 진행한다
+    // 재시작 직후에는 예약(자동 시작·입장 마감·결승 전환)이 사라졌으므로 사회자가 직접 진행한다
     this.state.room.autoStartAt = null;
+    this.state.room.lockAt = null;
     this.state.room.finaleAt = null;
     // 재시작 직후 ANSWERING이었다면 마감 시각을 믿을 수 없으므로 문제 화면으로 내린다.
     if (this.state.room.status === 'ANSWERING') {

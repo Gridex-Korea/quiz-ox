@@ -212,6 +212,7 @@ export function createGateway(io: Server, game: GameService, deps: GatewayDeps):
       };
 
       handle(C2S.hostLock, null, () => ({ type: 'lock' }));
+      handle(C2S.hostCancelLock, null, () => ({ type: 'cancelLock' }));
       handle(C2S.hostUnlock, null, () => ({ type: 'unlock' }));
       handle(C2S.hostShowQuestion, showQuestionSchema, (p) => ({ type: 'showQuestion', index: p.index, mode: p.mode }));
       handle(C2S.hostStartTimer, startTimerSchema, (p) => ({ type: 'startTimer', seconds: p.seconds }));

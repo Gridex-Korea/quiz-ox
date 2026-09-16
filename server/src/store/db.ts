@@ -134,7 +134,8 @@ export class Store {
       db.prepare(
         `INSERT INTO rooms (id, code, status, round_mode, current_index, deadline_at, revival_used_count, winner_player_id, config, created_at, updated_at, phones_purged_at, pending_revival, finale_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(r.id, r.code, r.status, r.roundMode, r.currentIndex, r.deadlineAt, r.revivalUsedCount, r.winnerPlayerId, JSON.stringify(r.config), r.createdAt, r.updatedAt, r.phonesPurgedAt, r.pendingRevival ? 1 : 0, r.finaleAt);
+        // finale_at은 메모리 예약이라 재시작하면 의미가 없다. 복원 때와 맞추려고 null로 저장한다
+      ).run(r.id, r.code, r.status, r.roundMode, r.currentIndex, r.deadlineAt, r.revivalUsedCount, r.winnerPlayerId, JSON.stringify(r.config), r.createdAt, r.updatedAt, r.phonesPurgedAt, r.pendingRevival ? 1 : 0, null);
 
       const insPlayer = db.prepare(
         `INSERT INTO players (id, room_id, phone, name, avatar, strikes, status, session_token_hash, connected, joined_at, consent_at, eliminated_at_index, revived_at_index)
@@ -205,7 +206,9 @@ export class Store {
       roundMode: (roomRow['round_mode'] as Room['roundMode']) ?? null,
       currentIndex: Number(roomRow['current_index']),
       deadlineAt: int(roomRow['deadline_at']),
+      // 예약(자동 시작·입장 마감·결승 전환)은 메모리에만 있으므로 재시작하면 사라진다
       autoStartAt: null,
+      lockAt: null,
       pendingRevival: bool(roomRow['pending_revival']),
       finaleAt: null,
       revivalUsedCount: Number(roomRow['revival_used_count']),

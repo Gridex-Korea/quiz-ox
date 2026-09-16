@@ -63,6 +63,8 @@ export const updateConfigSchema = z
     autoStartDelaySec: z.number().int().min(0).max(30),
     finalistThreshold: z.number().int().min(0).max(20),
     chatEnabled: z.boolean(),
+    lockCountdownSec: z.number().int().min(0).max(60),
+    practiceUntilOrderNo: z.number().int().min(-1).max(999),
   })
   .partial();
 

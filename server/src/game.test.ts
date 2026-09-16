@@ -39,7 +39,8 @@ function lockedRoom() {
     ),
   );
   s = step(reduce(s, { type: 'registerPlayer', phone: '01011112222', name: 'A', avatar: { body: 0, face: 0, hair: 0 }, tokenHash: 'h' }, T0));
-  s = step(reduce(s, { type: 'lock' }, T0));
+  s = step(reduce(s, { type: 'lock' }, T0)); // 카운트다운 시작
+  s = step(reduce(s, { type: 'lock' }, T0)); // 다시 눌러 즉시 마감
   return s;
 }
 
@@ -66,7 +67,7 @@ describe('GameService 자동 시작', () => {
     expect(game.state.room.deadlineAt).toBe(T0 + 3000 + 10_000);
     expect(sent.some((m) => m.event === S2C.questionStart)).toBe(true);
 
-    vi.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(11_000);
     expect(game.state.room.status).toBe('TIME_UP');
     game.dispose();
   });
@@ -110,7 +111,7 @@ describe('GameService 자동 시작', () => {
     game.dispatch({ type: 'showQuestion' });
     vi.advanceTimersByTime(3000); // 자동 시작
     game.dispatch({ type: 'choose', playerId, index: 0, choice: 'O' });
-    vi.advanceTimersByTime(10_000); // 마감
+    vi.advanceTimersByTime(11_000); // 마감(제한 10초 + 유예 1초)
     game.dispatch({ type: 'reveal' });
     expect(game.state.room.status).toBe('REVEALED');
     expect(game.state.room.finaleAt).not.toBeNull();
@@ -124,15 +125,41 @@ describe('GameService 자동 시작', () => {
     game2.dispatch({ type: 'showQuestion' });
     vi.advanceTimersByTime(3000);
     game2.dispatch({ type: 'choose', playerId: p2, index: 0, choice: 'O' });
-    vi.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(11_000);
     game2.dispatch({ type: 'reveal' });
     game2.dispatch({ type: 'next' });
     expect(game2.state.room.status).toBe('QUESTION_SHOWN');
     vi.advanceTimersByTime(2000);
     expect(game2.state.room.status).toBe('QUESTION_SHOWN');
-    vi.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(11_000);
     expect(game2.state.room.status).not.toBe('ENDED');
     game.dispose();
+    game2.dispose();
+  });
+
+  it('입장 마감은 10초 카운트다운 뒤 실제로 잠기고, 취소하면 잠기지 않는다', () => {
+    const lobby = () => {
+      const s = lockedRoom();
+      return { ...s, room: { ...s.room, status: 'LOBBY' as const } };
+    };
+    const game = new GameService(null, lobby(), { info: () => undefined, error: () => undefined });
+    game.attach(fakeEmitter().emitter);
+    game.dispatch({ type: 'lock' });
+    expect(game.state.room.status).toBe('LOBBY');
+    vi.advanceTimersByTime(9999);
+    expect(game.state.room.status).toBe('LOBBY');
+    vi.advanceTimersByTime(1);
+    expect(game.state.room.status).toBe('LOCKED');
+    game.dispose();
+
+    const game2 = new GameService(null, lobby(), { info: () => undefined, error: () => undefined });
+    game2.attach(fakeEmitter().emitter);
+    game2.dispatch({ type: 'lock' });
+    vi.advanceTimersByTime(3000);
+    game2.dispatch({ type: 'cancelLock' });
+    vi.advanceTimersByTime(20_000);
+    expect(game2.state.room.status).toBe('LOBBY');
+    expect(game2.state.room.lockAt).toBeNull();
     game2.dispose();
   });
 
@@ -145,7 +172,7 @@ describe('GameService 자동 시작', () => {
     expect(game.state.room.status).toBe('ANSWERING');
     game.dispatch({ type: 'cancelRound' });
     expect(game.state.room.status).toBe('QUESTION_SHOWN');
-    vi.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(11_000);
     expect(game.state.room.status).toBe('QUESTION_SHOWN');
     game.dispose();
   });
