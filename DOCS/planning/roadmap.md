@@ -87,6 +87,7 @@ related: ["[[overview]]", "[[requirements]]", "[[risks]]"]
 목표: 공개 URL에서 실제 폰 10대 이상으로 일반 5문제 + 패자부활전 1회 리허설 성공. → [[ADR-0004-cloud-deploy]]
 
 - [x] Dockerfile(멀티스테이지, node:24-slim), 배포 스크립트 `deploy/cloud-run.sh`(인스턴스 1 고정, CPU 상시, 타임아웃 3600, 세션 어피니티, PUBLIC_URL 자동 반영) ✅ 2026-09-16
+  - 로컬 검증: `docker build` 종료코드 0(이미지 508MB), 컨테이너 기동 후 `/api/health` ok·HEALTHCHECK healthy, 정적 파일·SPA 폴백·로그인 확인, 컨테이너 상대 100명 시뮬레이션 통과(ack 누락 0, p95 4ms), 오류 로그 0건
 - [ ] **실제 Cloud Run 배포** — 사회자 승인과 GCP 프로젝트 ID·리전·PIN·스크린 키 필요. 비용 발생(인스턴스 1 상시)
 - [x] SQLite → GCS 스냅샷 복사(`VACUUM INTO` 사본, 2초 디바운스)와 기동 시 복원 코드 ✅ — 실제 버킷으로는 **미검증**(배포 뒤 확인)
 - [ ] 핫스팟 리허설: 노트북을 휴대폰 핫스팟에 물리고 콘솔 + 스크린 창 동시 동작 확인, 백업 핫스팟 폰 준비, 테더링 데이터 한도 확인
