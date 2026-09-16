@@ -235,6 +235,8 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
   const isRevival = view.mode === 'REVIVAL';
   const me = view.me;
   const selected = view.me.choice ?? pending;
+  /** 이번 라운드 답변 자격(타이머 시작 전에도 버튼을 보여주되 잠가 둔다) */
+  const eligible = me.status === (isRevival ? 'WAITING' : 'ACTIVE');
 
   const banner = (() => {
     if (view.status === 'LOBBY' || view.status === 'LOCKED' || view.status === 'ENDED') return null;
@@ -280,12 +282,12 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
           </div>
           <p className="qtext">{view.question.text}</p>
           {view.question.imageUrl && <img className="qimg" src={view.question.imageUrl} alt="" />}
-          {view.canAnswer ? (
+          {eligible ? (
             <div className="ox">
-              <button type="button" className={`ox-btn o ${selected === 'O' ? 'selected' : ''}`} onClick={() => choose('O')} disabled={view.status !== 'ANSWERING'}>
+              <button type="button" className={`ox-btn o ${selected === 'O' ? 'selected' : ''}`} onClick={() => choose('O')} disabled={!view.canAnswer}>
                 O
               </button>
-              <button type="button" className={`ox-btn x ${selected === 'X' ? 'selected' : ''}`} onClick={() => choose('X')} disabled={view.status !== 'ANSWERING'}>
+              <button type="button" className={`ox-btn x ${selected === 'X' ? 'selected' : ''}`} onClick={() => choose('X')} disabled={!view.canAnswer}>
                 X
               </button>
             </div>
@@ -295,7 +297,7 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
               <p className="muted">스크린을 봐 주세요</p>
             </div>
           )}
-          {view.canAnswer && (
+          {eligible && (
             <p className="ack">
               {view.status !== 'ANSWERING'
                 ? '사회자가 타이머를 시작하면 버튼이 열립니다'

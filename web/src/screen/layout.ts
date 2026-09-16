@@ -31,10 +31,16 @@ export function zoneOf(p: PublicPlayer, view: RoomStateForScreen, phase: RevealP
 
   const eligible = mode === 'REVIVAL' ? 'WAITING' : 'ACTIVE';
 
-  if (status === 'REVEALED' && phase === 'hold') {
-    // 공개 직후 잠깐: 마감 시점의 자리를 유지하며 정답·오답만 색으로 구분
+  if (status === 'REVEALED') {
     const outcome = view.outcomes?.find((o) => o.playerId === p.id);
-    if (outcome) return outcome.choice ?? 'center';
+    if (outcome) {
+      // 공개 직후 잠깐(hold): 마감 시점의 자리를 유지하며 정답·오답만 색으로 구분
+      if (phase === 'hold') return outcome.choice ?? 'center';
+      if (outcome.statusAfter === 'ELIMINATED') return 'hidden';
+      if (outcome.statusAfter === 'WAITING') return 'strip';
+      // 정답자·부활자는 다음 문제까지 자기 구역에 남는다
+      return outcome.choice ?? 'center';
+    }
     return p.status === 'ELIMINATED' ? 'hidden' : 'strip';
   }
 

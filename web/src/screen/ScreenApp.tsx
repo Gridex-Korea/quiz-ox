@@ -226,7 +226,9 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       </header>
 
       {/* 안내 자막 */}
-      {inRound && isRevival && <div className="s-banner revival">🔥 패자부활전 · 대기실 {stageCounts.waiting + (view.status === 'REVEALED' ? 0 : 0)}명 도전 · 맞히면 무대 복귀, 틀리면 탈락</div>}
+      {inRound && isRevival && view.status !== 'REVEALED' && (
+        <div className="s-banner revival">🔥 패자부활전 · 대기실 {stageCounts.waiting}명 도전 · 맞히면 무대 복귀, 틀리면 탈락</div>
+      )}
       {inRound && !isRevival && !view.liveMoves && view.status !== 'REVEALED' && <div className="s-banner hidden-mode">🙈 이번 문제부터 선택은 마감 후 공개됩니다</div>}
       {view.status === 'REVEALED' && view.question?.explanation && <div className="s-banner explain">{view.question.explanation}</div>}
 
