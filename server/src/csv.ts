@@ -6,7 +6,7 @@ export function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let field = '';
   let inQuotes = false;
-  const src = text.replace(/^﻿/, '');
+  const src = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   for (let i = 0; i < src.length; i++) {
     const ch = src[i]!;
     if (inQuotes) {
@@ -138,5 +138,5 @@ export function participantsCsv(state: RoomState): string {
       ].join(','),
     );
   }
-  return '﻿' + lines.join('\r\n') + '\r\n';
+  return String.fromCharCode(0xfeff) + lines.join('\r\n') + '\r\n';
 }

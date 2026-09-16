@@ -272,7 +272,6 @@ describe('패자부활전', () => {
       const res = playRound(cur, ids, answers);
       cur = res.s;
       if (i < 4) expect(shouldSuggestRevival(cur)).toBe(false);
-      if (i < 4) cur = cur; // next는 playRound 안의 showQuestion이 대신함
     }
     expect(cur.room.currentIndex).toBe(4);
     expect(shouldSuggestRevival(cur)).toBe(true);

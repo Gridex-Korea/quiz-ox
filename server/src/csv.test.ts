@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { parseCsv, questionsFromCsv } from './csv';
+import { createInitialState } from './engine/state';
+import { parseCsv, participantsCsv, questionsFromCsv } from './csv';
 
 describe('CSV', () => {
+  it('BOM을 벗겨 읽고, 내보낼 때는 BOM을 붙인다', () => {
+    const rows = parseCsv(String.fromCharCode(0xfeff) + 'a,b\n');
+    expect(rows[0]![0]).toBe('a');
+    const out = participantsCsv(createInitialState(0));
+    expect(out.charCodeAt(0)).toBe(0xfeff);
+    expect(out.slice(1)).toMatch(/^이름,전화번호/);
+  });
+
   it('따옴표·쉼표·줄바꿈을 처리한다', () => {
     const rows = parseCsv('a,"b,c","d ""e""",f\r\n1,2,"3\n4",5\n');
     expect(rows).toEqual([

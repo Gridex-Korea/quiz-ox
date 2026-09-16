@@ -153,4 +153,4 @@ export interface PlayerConnectionPayload {
   connected: boolean;
 }
 
-export interface UpdateConfigPayload extends Partial<RoomConfig> {}
+export type UpdateConfigPayload = Partial<RoomConfig>;

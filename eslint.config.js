@@ -18,7 +18,12 @@ export default tseslint.config(
     files: ['web/src/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     languageOptions: { globals: { ...globals.browser } },
-    rules: { ...reactHooks.configs.recommended.rules },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      // React Compiler 계열 규칙: 소켓 상태를 props/외부 시스템과 동기화하는 훅에서 setState·ref 접근이 필요하다.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/refs': 'off',
+    },
   },
   {
     files: ['server/src/**/*.ts', 'tools/**/*.ts'],
