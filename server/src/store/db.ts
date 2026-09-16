@@ -81,6 +81,8 @@ const bool = (v: unknown) => Number(v) === 1;
 
 export class Store {
   private db: DatabaseSync;
+  /** save()가 끝날 때마다 호출(GCS 스냅샷 등) */
+  onSaved: (() => void) | null = null;
 
   constructor(public readonly path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -156,6 +158,12 @@ export class Store {
       db.exec('ROLLBACK');
       throw e;
     }
+    this.onSaved?.();
+  }
+
+  /** WAL 내용까지 포함한 일관된 사본을 만든다 */
+  copyTo(path: string): void {
+    this.db.exec(`VACUUM INTO '${path.replace(/'/g, "''")}'`);
   }
 
   /** 저장된 방이 없으면 null */

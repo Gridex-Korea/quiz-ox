@@ -9,6 +9,7 @@ import { createInitialState } from './engine/state';
 import { GameService } from './game';
 import { registerRoutes } from './http/routes';
 import { Store } from './store/db';
+import { createSnapshotter, restoreFromGcs, type Snapshotter } from './store/gcs';
 import { createGateway } from './ws/gateway';
 import { HostTokens } from './ws/hostTokens';
 
@@ -22,6 +23,8 @@ export interface AppOptions {
   hostTokenTtlMs: number;
   logger?: boolean;
   initialState?: RoomState;
+  /** 설정 시 SQLite 스냅샷을 이 버킷에 복사하고 기동 시 복원한다 */
+  gcsBucket?: string;
 }
 
 export interface App {
@@ -34,7 +37,16 @@ export interface App {
 
 export async function buildApp(opts: AppOptions): Promise<App> {
   const fastify = Fastify({ logger: opts.logger ?? false, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
+  const info = (m: string) => fastify.log.info(m);
+  const useGcs = !!opts.gcsBucket && !!opts.dbPath && opts.dbPath !== ':memory:';
+  if (useGcs) await restoreFromGcs(opts.gcsBucket!, opts.dbPath!, info);
   const store = opts.dbPath ? new Store(opts.dbPath) : null;
+  let snapshotter: Snapshotter | null = null;
+  if (useGcs && store) {
+    snapshotter = createSnapshotter(opts.gcsBucket!, (p) => store.copyTo(p), opts.dbPath!, info);
+    store.onSaved = () => snapshotter?.schedule();
+    info(`GCS 스냅샷 활성: gs://${opts.gcsBucket}`);
+  }
   const now = Date.now();
   let state = opts.initialState ?? store?.load() ?? createInitialState(now);
 
@@ -80,6 +92,7 @@ export async function buildApp(opts: AppOptions): Promise<App> {
     io.disconnectSockets(true);
     await new Promise<void>((resolve) => io.close(() => resolve()));
     await fastify.close();
+    await snapshotter?.flush();
     store?.close();
   };
 

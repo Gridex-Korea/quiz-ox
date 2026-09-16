@@ -11,6 +11,7 @@ async function main() {
     webDist: config.webDist,
     retentionDays: config.retentionDays,
     hostTokenTtlMs: config.hostTokenTtlMs,
+    gcsBucket: config.gcsBucket || undefined,
     logger: true,
   });
 

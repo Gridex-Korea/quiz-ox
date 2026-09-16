@@ -4,3 +4,5 @@ process.env['PORT'] = process.env['DEV_SERVER_PORT'] ?? '3000';
 // 개발 중 참가자는 Vite(5173)로 들어오므로 QR/URL도 그쪽을 가리킨다
 process.env['PUBLIC_URL'] ??= 'http://localhost:5173';
 await import('./index');
+
+export {};
