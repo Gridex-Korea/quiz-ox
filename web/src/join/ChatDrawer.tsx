@@ -7,7 +7,8 @@ import type { RoomConnection } from '../shared/socket';
 
 export function ChatDrawer({ room, view }: { room: RoomConnection<RoomStateForPlayer>; view: RoomStateForPlayer }) {
   const messages = useChat(room);
-  const [open, setOpen] = useState(false);
+  // 기본으로 펼쳐 둔다. O/X가 화면 절반만 쓰므로 남는 공간에 대화 기록이 보인다
+  const [open, setOpen] = useState(true);
   const [text, setText] = useState('');
   const [cooldown, setCooldown] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
