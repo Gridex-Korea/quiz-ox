@@ -292,7 +292,9 @@ function Playing({ view, session, room }: { view: RoomStateForPlayer; session: S
             )}
           </div>
           <p className="qtext">{view.question.text}</p>
-          {view.question.imageUrl && <img className="qimg" src={view.question.imageUrl} alt="" />}
+          {view.question.imageUrl && (
+            <img className="qimg" src={view.question.imageUrl} alt="" onError={(e) => (e.currentTarget.style.display = 'none')} />
+          )}
           {eligible ? (
             <div className="ox">
               <button type="button" className={`ox-btn o ${selected === 'O' ? 'selected' : ''}`} onClick={() => choose('O')} disabled={!view.canAnswer}>

@@ -355,27 +355,32 @@
   font-size: 28px;
 }
 
-/* 입장 마감 카운트다운 */
+/* 입장 마감 카운트다운 (로비 카드 오른쪽) */
 .lock-countdown {
-  margin-top: 28px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 2px;
+  padding-left: 36px;
+  margin-left: 12px;
+  border-left: 3px solid rgba(245, 158, 11, 0.4);
+  align-self: stretch;
 }
 .lock-label {
-  font-size: 34px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--warn);
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  line-height: 1.2;
 }
 .lock-number {
-  font-size: 170px;
+  font-size: 150px;
   font-weight: 900;
   line-height: 1;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 60px rgba(245, 158, 11, 0.5);
+  text-shadow: 0 0 50px rgba(245, 158, 11, 0.5);
   animation: popIn 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 .lock-number.urgent {

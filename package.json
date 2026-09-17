@@ -17,7 +17,8 @@
     "test": "npm run test -w server",
     "start": "node server/dist/index.js",
     "simulate": "node --import tsx tools/simulate.ts",
-    "bots": "node --import tsx tools/bots.ts"
+    "bots": "node --import tsx tools/bots.ts",
+    "autoplay": "node --import tsx tools/autoplay.ts"
   },
   "engines": {
     "node": ">=22.13"

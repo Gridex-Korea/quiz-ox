@@ -83,6 +83,7 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
   const [flash, setFlash] = useState<string | null>(null);
   const [leaving, setLeaving] = useState<Leaving[]>([]);
   const [sound, setSound] = useState(isSoundEnabled());
+  const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const messages = useChat(room);
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
 
@@ -219,7 +220,9 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
 
   // ---- 배치 계산 ----
   const inRoundNow = ['QUESTION_SHOWN', 'ANSWERING', 'TIME_UP', 'REVEALED'].includes(view.status);
-  const questionImage = inRoundNow ? view.question?.imageUrl ?? null : null;
+  const rawImage = inRoundNow ? view.question?.imageUrl ?? null : null;
+  // 외부 URL 사진이 실패하면 빈 액자가 남지 않게 숨기고 배치를 되돌린다
+  const questionImage = rawImage && !failedImages.has(rawImage) ? rawImage : null;
   const chatOn = view.chatEnabled;
   const { slots, dims } = useMemo(() => {
     const byZone = new Map<ZoneKey, string[]>();
@@ -307,7 +310,12 @@ function Stage({ view, room }: { view: RoomStateForScreen; room: ReturnType<type
       {/* 사진 문제 */}
       {questionImage && (
         <div className="qimage-frame" style={rectStyle(questionImageRect(chatOn))}>
-          <img className="qimage" src={questionImage} alt="" />
+          <img
+            className="qimage"
+            src={questionImage}
+            alt=""
+            onError={() => setFailedImages((cur) => new Set(cur).add(questionImage))}
+          />
         </div>
       )}
 
@@ -491,15 +499,17 @@ function LobbyPanel({ view, lockIn }: { view: RoomStateForScreen; lockIn: number
             입장 <strong>{view.players.length}</strong>명{view.status === 'LOCKED' && <span className="locked"> · 입장 마감 · 곧 시작합니다</span>}
           </p>
         </div>
-      </div>
-      {sec !== null && sec > 0 && (
-        <div className="lock-countdown">
-          <div className="lock-label">곧 입장이 마감됩니다 · 지금 들어오세요!</div>
-          <div className={`lock-number ${sec <= 5 ? 'urgent' : ''}`} key={sec}>
-            {sec}
+        {/* 마감 카운트다운은 카드 안에 둔다. 무대에 떠 있으면 아바타와 겹친다 */}
+        {sec !== null && sec > 0 && (
+          <div className="lock-countdown">
+            <div className={`lock-number ${sec <= 5 ? 'urgent' : ''}`} key={sec}>
+              {sec}
+            </div>
+            <div className="lock-label">곧 마감!
+              <br />지금 들어오세요</div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
